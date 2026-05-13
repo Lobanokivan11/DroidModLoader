@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -41,6 +40,8 @@ import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstall
 import com.shonkware.droidmodloader.engine.model.GameProfile
 import com.shonkware.droidmodloader.engine.model.Mod
 import com.shonkware.droidmodloader.engine.model.PluginEntry
+import com.shonkware.droidmodloader.engine.index.ModFilePreview
+import com.shonkware.droidmodloader.engine.index.ModFilePreviewEntry
 
 @Composable
 fun HeaderCard(
@@ -165,7 +166,8 @@ fun ModsCard(
     onToggleMod: (String) -> Unit,
     onMoveModUp: (String) -> Unit,
     onMoveModDown: (String) -> Unit,
-    onDeleteMod: (Mod) -> Unit
+    onDeleteMod: (Mod) -> Unit,
+    onViewModFiles: (String) -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -184,7 +186,8 @@ fun ModsCard(
                         onToggleMod = onToggleMod,
                         onMoveModUp = onMoveModUp,
                         onMoveModDown = onMoveModDown,
-                        onDeleteMod = onDeleteMod
+                        onDeleteMod = onDeleteMod,
+                        onViewModFiles = onViewModFiles
                     )
                 }
             }
@@ -199,7 +202,8 @@ fun CompactModRow(
     onToggleMod: (String) -> Unit,
     onMoveModUp: (String) -> Unit,
     onMoveModDown: (String) -> Unit,
-    onDeleteMod: (Mod) -> Unit
+    onDeleteMod: (Mod) -> Unit,
+    onViewModFiles: (String) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
 
@@ -278,6 +282,13 @@ fun CompactModRow(
                         Button(onClick = { onMoveModDown(mod.id) }) {
                             Text("Down")
                         }
+                    }
+
+                    Button(
+                        onClick = { onViewModFiles(mod.id) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("View Files")
                     }
 
                     Button(
@@ -828,6 +839,112 @@ fun InstallerChoiceDialog(
                         Text("Install Selected")
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun ModFilePreviewDialog(
+    preview: ModFilePreview,
+    fullscreen: Boolean,
+    onClose: () -> Unit,
+    onToggleFullscreen: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onClose,
+        properties = DialogProperties(usePlatformDefaultWidth = !fullscreen)
+    ) {
+        Card(
+            modifier = if (fullscreen) {
+                Modifier
+                    .fillMaxSize()
+                    .padding(12.dp)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .padding(12.dp)
+            }
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Files: ${preview.modName}",
+                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleLarge
+                )
+
+                Text("Winning/deployed: ${preview.winningFiles.size}")
+                Text("Overwritten: ${preview.overwrittenFiles.size}")
+                Text("Plugins: ${preview.pluginFiles.size}")
+                Text("Archives: ${preview.archiveFiles.size}")
+                Text("Configs: ${preview.configFiles.size}")
+                Text("Setup/docs/optional/unknown: ${preview.setupFiles.size + preview.documentationFiles.size + preview.optionalFiles.size + preview.unknownFiles.size}")
+
+                FilePreviewSection("Winning / Deployed", preview.winningFiles)
+                FilePreviewSection("Overwritten", preview.overwrittenFiles)
+                FilePreviewSection("Plugins", preview.pluginFiles)
+                FilePreviewSection("Archives", preview.archiveFiles)
+                FilePreviewSection("Config Files", preview.configFiles)
+                FilePreviewSection("Setup Files", preview.setupFiles)
+                FilePreviewSection("Documentation", preview.documentationFiles)
+                FilePreviewSection("Optional", preview.optionalFiles)
+                FilePreviewSection("Unknown", preview.unknownFiles)
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onToggleFullscreen) {
+                        Text(if (fullscreen) "Windowed" else "Fullscreen")
+                    }
+
+                    Button(onClick = onClose) {
+                        Text("Close")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FilePreviewSection(
+    title: String,
+    entries: List<ModFilePreviewEntry>
+) {
+    if (entries.isEmpty()) return
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(title, fontWeight = FontWeight.Bold)
+
+            entries.take(50).forEach { entry ->
+                val suffix = when {
+                    entry.winningModName != null && title == "Overwritten" ->
+                        " → winner: ${entry.winningModName}"
+
+                    else -> ""
+                }
+
+                Text(
+                    text = entry.normalizedPath + suffix,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+
+            if (entries.size > 50) {
+                Text(
+                    text = "...and ${entries.size - 50} more",
+                    style = MaterialTheme.typography.bodySmall
+                )
             }
         }
     }

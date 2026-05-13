@@ -15,6 +15,7 @@ import com.shonkware.droidmodloader.engine.model.PluginEntry
 import com.shonkware.droidmodloader.engine.model.GameProfile
 import com.shonkware.droidmodloader.engine.index.ModContentIndex
 import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstall
+import com.shonkware.droidmodloader.engine.index.ModFilePreview
 
 data class DashboardUiState(
     val appName: String,
@@ -49,6 +50,9 @@ data class DashboardUiState(
     val selectedInstallerOptionIds: Set<String>,
     val showInstallerDialog: Boolean,
     val installerDialogFullscreen: Boolean,
+    val selectedModFilePreview: ModFilePreview?,
+    val showModFilePreviewDialog: Boolean,
+    val modFilePreviewFullscreen: Boolean,
 )
 
 data class DashboardActions(
@@ -90,6 +94,10 @@ data class DashboardActions(
     val onConfirmInstaller: () -> Unit,
     val onCancelInstaller: () -> Unit,
     val onToggleInstallerFullscreen: () -> Unit,
+
+    val onViewModFiles: (String) -> Unit,
+    val onCloseModFilePreview: () -> Unit,
+    val onToggleModFilePreviewFullscreen: () -> Unit,
 )
 
 @Composable
@@ -141,7 +149,8 @@ fun DroidModLoaderScreen(
                 onToggleMod = actions.onToggleMod,
                 onMoveModUp = actions.onMoveModUp,
                 onMoveModDown = actions.onMoveModDown,
-                onDeleteMod = actions.onDeleteMod
+                onDeleteMod = actions.onDeleteMod,
+                onViewModFiles = actions.onViewModFiles
             )
 
             PluginsCard(
@@ -199,6 +208,14 @@ fun DroidModLoaderScreen(
             onConfirm = actions.onConfirmInstaller,
             onCancel = actions.onCancelInstaller,
             onToggleFullscreen = actions.onToggleInstallerFullscreen
+        )
+    }
+    if (state.showModFilePreviewDialog && state.selectedModFilePreview != null) {
+        ModFilePreviewDialog(
+            preview = state.selectedModFilePreview,
+            fullscreen = state.modFilePreviewFullscreen,
+            onClose = actions.onCloseModFilePreview,
+            onToggleFullscreen = actions.onToggleModFilePreviewFullscreen
         )
     }
 }

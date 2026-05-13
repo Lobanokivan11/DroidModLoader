@@ -25,6 +25,7 @@ import com.shonkware.droidmodloader.engine.model.GameProfile
 import com.shonkware.droidmodloader.engine.model.AppSetupState
 import com.shonkware.droidmodloader.engine.index.ModContentIndex
 import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstall
+import com.shonkware.droidmodloader.engine.index.ModFilePreview
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -79,6 +80,10 @@ class MainActivity : ComponentActivity() {
     private var installerDialogFullscreen by mutableStateOf(false)
 
     private var visibleModContentIndexes by mutableStateOf<Map<String, ModContentIndex>>(emptyMap())
+
+    private var selectedModFilePreview by mutableStateOf<ModFilePreview?>(null)
+    private var showModFilePreviewDialog by mutableStateOf(false)
+    private var modFilePreviewFullscreen by mutableStateOf(false)
 
     private val importZipLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -177,6 +182,9 @@ class MainActivity : ComponentActivity() {
             selectedInstallerOptionIds = pendingInstallerSelectedOptionIds,
             showInstallerDialog = showInstallerDialog,
             installerDialogFullscreen = installerDialogFullscreen,
+            selectedModFilePreview = selectedModFilePreview,
+            showModFilePreviewDialog = showModFilePreviewDialog,
+            modFilePreviewFullscreen = modFilePreviewFullscreen,
 
         )
     }
@@ -298,6 +306,17 @@ class MainActivity : ComponentActivity() {
             },
             onToggleInstallerFullscreen = {
                 installerDialogFullscreen = !installerDialogFullscreen
+            },
+            onViewModFiles = { modId ->
+                runInBackground { openModFilePreview(modId) }
+            },
+            onCloseModFilePreview = {
+                selectedModFilePreview = null
+                showModFilePreviewDialog = false
+                modFilePreviewFullscreen = false
+            },
+            onToggleModFilePreviewFullscreen = {
+                modFilePreviewFullscreen = !modFilePreviewFullscreen
             },
         )
 
@@ -1450,6 +1469,30 @@ class MainActivity : ComponentActivity() {
         }
 
         updateLastOperationStatus("Installer cancelled.")
+    }
+
+    private fun openModFilePreview(modId: String) {
+        val engine = createModEngineForWorkflows() ?: return
+
+        val mod = engine.getCurrentMods().firstOrNull { it.id == modId }
+        if (mod == null) {
+            appendError("Could not open file preview. Mod not found: $modId")
+            return
+        }
+
+        try {
+            val preview = engine.buildModFilePreview(mod)
+
+            runOnUiThread {
+                selectedModFilePreview = preview
+                showModFilePreviewDialog = true
+                modFilePreviewFullscreen = false
+            }
+
+            appendLog("Opened file preview for mod: ${mod.name}")
+        } catch (e: Exception) {
+            appendError("Failed to build file preview for $modId: ${e.message}", e)
+        }
     }
 }
 

@@ -33,6 +33,10 @@ import com.shonkware.droidmodloader.engine.index.ModContentIndexer
 import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstaller
 import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstall
 import com.shonkware.droidmodloader.engine.install.InstallerSelection
+import com.shonkware.droidmodloader.engine.index.ModContentCategory
+import com.shonkware.droidmodloader.engine.index.ModFilePreview
+import com.shonkware.droidmodloader.engine.index.ModFilePreviewEntry
+import com.shonkware.droidmodloader.engine.index.ModFilePreviewStatus
 
 data class UninstallResult(
     val removed: Boolean,
@@ -620,4 +624,51 @@ class ModEngine(
     fun cancelPreparedArchiveInstall(prepared: PreparedArchiveInstall) {
         preparedArchiveInstaller.cancel(prepared)
     }
+
+    fun buildModFilePreview(mod: Mod): ModFilePreview {
+        val index = indexModContent(mod)
+        val winningRecords = getCurrentWinningRecords()
+        val winningByPath = winningRecords.associateBy { it.normalizedPath }
+
+        val entries = index.entries.map { entry ->
+            val winner = winningByPath[entry.normalizedPath]
+
+            val status = when {
+                entry.category == ModContentCategory.PLUGIN -> ModFilePreviewStatus.PLUGIN
+                entry.category == ModContentCategory.ARCHIVE -> ModFilePreviewStatus.ARCHIVE
+                entry.category == ModContentCategory.CONFIG -> ModFilePreviewStatus.CONFIG
+                entry.category == ModContentCategory.SETUP_ONLY -> ModFilePreviewStatus.SETUP_ONLY
+                entry.category == ModContentCategory.DOCUMENTATION -> ModFilePreviewStatus.DOCUMENTATION
+                entry.category == ModContentCategory.OPTIONAL_MODULE -> ModFilePreviewStatus.OPTIONAL
+                entry.category == ModContentCategory.IGNORED -> ModFilePreviewStatus.IGNORED
+                entry.category == ModContentCategory.UNKNOWN -> ModFilePreviewStatus.UNKNOWN
+
+                entry.isDeployable && winner == null ->
+                    ModFilePreviewStatus.NOT_DEPLOYED
+
+                entry.isDeployable && winner != null && winner.winningModId == mod.id ->
+                    ModFilePreviewStatus.WINNING
+
+                entry.isDeployable && winner != null && winner.winningModId != mod.id ->
+                    ModFilePreviewStatus.OVERWRITTEN
+
+                else -> ModFilePreviewStatus.UNKNOWN
+            }
+
+            ModFilePreviewEntry(
+                normalizedPath = entry.normalizedPath,
+                originalPath = entry.originalPath,
+                status = status,
+                reason = entry.reason,
+                winningModName = winner?.winningModName
+            )
+        }
+
+        return ModFilePreview(
+            modId = mod.id,
+            modName = mod.name,
+            entries = entries.sortedBy { it.normalizedPath }
+        )
+    }
+
 }
