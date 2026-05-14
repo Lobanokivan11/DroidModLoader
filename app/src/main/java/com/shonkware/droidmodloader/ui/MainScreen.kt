@@ -53,6 +53,7 @@ data class DashboardUiState(
     val selectedModFilePreview: ModFilePreview?,
     val showModFilePreviewDialog: Boolean,
     val modFilePreviewFullscreen: Boolean,
+    val secondScreenEnabled: Boolean,
 )
 
 data class DashboardActions(
@@ -98,6 +99,8 @@ data class DashboardActions(
     val onViewModFiles: (String) -> Unit,
     val onCloseModFilePreview: () -> Unit,
     val onToggleModFilePreviewFullscreen: () -> Unit,
+
+    val onToggleSecondScreen: () -> Unit,
 )
 
 @Composable
@@ -168,7 +171,9 @@ fun DroidModLoaderScreen(
                 realDeployEnabled = state.realDeployEnabled,
                 onRealDeployChanged = actions.onRealDeployChanged,
                 onPickTargetFolder = actions.onPickTargetFolder,
-                onSaveSettings = actions.onSaveSettings
+                onSaveSettings = actions.onSaveSettings,
+                onToggleSecondScreen = actions.onToggleSecondScreen
+
             )
 
             ReportCard(

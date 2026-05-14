@@ -26,6 +26,7 @@ import com.shonkware.droidmodloader.engine.model.AppSetupState
 import com.shonkware.droidmodloader.engine.index.ModContentIndex
 import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstall
 import com.shonkware.droidmodloader.engine.index.ModFilePreview
+import com.shonkware.droidmodloader.ui.SecondScreenController
 import java.io.File
 
 class MainActivity : ComponentActivity() {
@@ -38,6 +39,10 @@ class MainActivity : ComponentActivity() {
         ActiveProfile,
         NewProfile
     }
+
+    private var secondScreenController: SecondScreenController? = null
+
+    private var secondScreenEnabled by mutableStateOf(false)
 
     private var folderPickMode by mutableStateOf(FolderPickMode.ActiveProfile)
     private var setupComplete by mutableStateOf(false)
@@ -145,7 +150,33 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        secondScreenController = SecondScreenController(this)
+
+
         initializeComposeUi()
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        if (secondScreenEnabled) {
+            secondScreenController?.start()
+            updateSecondScreen()
+        }
+    }
+
+    override fun onPause() {
+        secondScreenController?.stop()
+        super.onPause()
+    }
+
+    private fun updateSecondScreen() {
+        if (!secondScreenEnabled) return
+
+        secondScreenController?.update(
+            plugins = visiblePlugins,
+            activeProfileName = activeProfileName
+        )
     }
 
     private fun buildUiState(): DashboardUiState {
@@ -185,6 +216,7 @@ class MainActivity : ComponentActivity() {
             selectedModFilePreview = selectedModFilePreview,
             showModFilePreviewDialog = showModFilePreviewDialog,
             modFilePreviewFullscreen = modFilePreviewFullscreen,
+            secondScreenEnabled = secondScreenEnabled,
 
         )
     }
@@ -317,6 +349,9 @@ class MainActivity : ComponentActivity() {
             },
             onToggleModFilePreviewFullscreen = {
                 modFilePreviewFullscreen = !modFilePreviewFullscreen
+            },
+            onToggleSecondScreen = {
+                toggleSecondScreenPluginDisplay()
             },
         )
 
@@ -661,6 +696,7 @@ class MainActivity : ComponentActivity() {
             visiblePlugins = plugins
             visibleModContentIndexes = contentIndexes
             summaryText = newSummary
+            updateSecondScreen()
         }
 
         appendLog("Dashboard refreshed.")
@@ -1535,6 +1571,23 @@ class MainActivity : ComponentActivity() {
             appendLog("Opened file preview for mod: ${mod.name}")
         } catch (e: Exception) {
             appendError("Failed to build file preview for $modId: ${e.message}", e)
+        }
+    }
+
+    private fun toggleSecondScreenPluginDisplay() {
+        secondScreenEnabled = !secondScreenEnabled
+
+        if (secondScreenEnabled) {
+            secondScreenController?.start()
+            updateSecondScreen()
+            appendLog("Second screen plugin display enabled.")
+            updateLastOperationStatus("Second screen plugin display enabled.")
+            showToast("Second screen plugin display enabled.")
+        } else {
+            secondScreenController?.stop()
+            appendLog("Second screen plugin display disabled.")
+            updateLastOperationStatus("Second screen plugin display disabled.")
+            showToast("Second screen plugin display disabled.")
         }
     }
 }

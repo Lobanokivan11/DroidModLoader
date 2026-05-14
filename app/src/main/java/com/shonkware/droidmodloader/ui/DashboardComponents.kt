@@ -483,9 +483,11 @@ fun DeploymentSettingsCard(
     onSelectGame: (String) -> Unit,
     selectedTreeUriText: String,
     realDeployEnabled: Boolean,
+    secondScreenEnabled: Boolean,
     onRealDeployChanged: (Boolean) -> Unit,
     onPickTargetFolder: () -> Unit,
-    onSaveSettings: () -> Unit
+    onSaveSettings: () -> Unit,
+    onToggleSecondScreen: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -529,6 +531,18 @@ fun DeploymentSettingsCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Save Settings")
+            }
+            Button(
+                onClick = onToggleSecondScreen,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    if (secondScreenEnabled) {
+                        "Disable Second Screen Plugin Display"
+                    } else {
+                        "Enable Second Screen Plugin Display"
+                    }
+                )
             }
         }
     }
