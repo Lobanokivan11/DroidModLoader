@@ -11,6 +11,6 @@ class ArchiveExtractorRegistry(
 
     fun findExtractor(archive: File): ArchiveExtractor {
         return extractors.firstOrNull { it.supports(archive) }
-            ?: throw IllegalArgumentException("Unsupported archive format: ${archive.name}")
+            ?: throw IllegalArgumentException("Unsupported archive format! Supported archive formats: ZIP, 7Z, RAR")
     }
 }

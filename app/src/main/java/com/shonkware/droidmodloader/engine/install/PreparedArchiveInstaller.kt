@@ -5,6 +5,8 @@ import org.apache.commons.compress.archivers.sevenz.SevenZFile
 import java.io.File
 import java.io.IOException
 import java.util.zip.ZipInputStream
+import com.github.junrar.Archive
+import com.github.junrar.rarfile.FileHeader
 
 class PreparedArchiveInstaller(
     private val tempDir: File,
@@ -188,10 +190,10 @@ class PreparedArchiveInstaller(
         when (archive.extension.lowercase()) {
             "zip" -> unpackZip(archive, outputDir)
             "7z" -> unpackSevenZip(archive, outputDir)
+            "rar" -> unpackRar(archive, outputDir)
             else -> throw IllegalArgumentException("Unsupported archive format: ${archive.name}")
         }
     }
-
     private fun unpackZip(archive: File, outputDir: File) {
         ZipInputStream(archive.inputStream().buffered()).use { zis ->
             var entry = zis.nextEntry
@@ -219,7 +221,6 @@ class PreparedArchiveInstaller(
             }
         }
     }
-
     private fun unpackSevenZip(archive: File, outputDir: File) {
         SevenZFile.builder()
             .setFile(archive)
@@ -274,6 +275,46 @@ class PreparedArchiveInstaller(
                     entry = sevenZ.nextEntry
                 }
             }
+    }
+    private fun unpackRar(archive: File, outputDir: File) {
+        try {
+            Archive(archive).use { rar ->
+                while (true) {
+                    val header: FileHeader = rar.nextFileHeader() ?: break
+
+                    val rawName = getRarEntryName(header)
+                    if (rawName.isBlank()) {
+                        continue
+                    }
+
+                    val normalizedName = rawName.replace("\\", "/")
+                    val outFile = safeResolve(outputDir, normalizedName)
+
+                    if (header.isDirectory) {
+                        outFile.mkdirs()
+                    } else {
+                        outFile.parentFile?.mkdirs()
+
+                        outFile.outputStream().use { output ->
+                            rar.extractFile(header, output)
+                        }
+                    }
+                }
+            }
+        } catch (t: Throwable) {
+            throw IOException(
+                "RAR extraction failed for ${archive.name}. This archive may be RAR5, encrypted, corrupt, or unsupported by the current extractor: ${t.message}",
+                t
+            )
+        }
+    }
+    private fun getRarEntryName(header: FileHeader): String {
+        val unicodeName = header.fileNameW
+        if (!unicodeName.isNullOrBlank()) {
+            return unicodeName
+        }
+
+        return header.fileNameString ?: ""
     }
 
     private fun safeResolve(root: File, relativePath: String): File {
