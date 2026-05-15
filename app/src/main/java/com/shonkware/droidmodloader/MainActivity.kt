@@ -28,6 +28,7 @@ import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstall
 import com.shonkware.droidmodloader.engine.index.ModFilePreview
 import com.shonkware.droidmodloader.ui.SecondScreenController
 import java.io.File
+import com.shonkware.droidmodloader.ui.FullscreenPanel
 
 class MainActivity : ComponentActivity() {
 
@@ -89,6 +90,8 @@ class MainActivity : ComponentActivity() {
     private var selectedModFilePreview by mutableStateOf<ModFilePreview?>(null)
     private var showModFilePreviewDialog by mutableStateOf(false)
     private var modFilePreviewFullscreen by mutableStateOf(false)
+
+    private var fullscreenPanel by mutableStateOf(FullscreenPanel.NONE)
 
     private val importZipLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
@@ -217,6 +220,7 @@ class MainActivity : ComponentActivity() {
             showModFilePreviewDialog = showModFilePreviewDialog,
             modFilePreviewFullscreen = modFilePreviewFullscreen,
             secondScreenEnabled = secondScreenEnabled,
+            fullscreenPanel = fullscreenPanel,
 
         )
     }
@@ -352,6 +356,15 @@ class MainActivity : ComponentActivity() {
             },
             onToggleSecondScreen = {
                 toggleSecondScreenPluginDisplay()
+            },
+            onOpenModsFullscreen = {
+                fullscreenPanel = FullscreenPanel.MODS
+            },
+            onOpenPluginsFullscreen = {
+                fullscreenPanel = FullscreenPanel.PLUGINS
+            },
+            onCloseFullscreenPanel = {
+                fullscreenPanel = FullscreenPanel.NONE
             },
         )
 

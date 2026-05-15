@@ -167,7 +167,8 @@ fun ModsCard(
     onMoveModUp: (String) -> Unit,
     onMoveModDown: (String) -> Unit,
     onDeleteMod: (Mod) -> Unit,
-    onViewModFiles: (String) -> Unit
+    onViewModFiles: (String) -> Unit,
+    onOpenFullscreen: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -175,6 +176,9 @@ fun ModsCard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text("Mods", fontWeight = FontWeight.Bold)
+            Button(onClick = onOpenFullscreen) {
+                Text("Open Fullscreen")
+            }
 
             if (mods.isEmpty()) {
                 Text("No installed mods found.")
@@ -394,82 +398,107 @@ fun PluginsCard(
     plugins: List<PluginEntry>,
     onTogglePlugin: (String) -> Unit,
     onMovePluginUp: (String) -> Unit,
-    onMovePluginDown: (String) -> Unit
+    onMovePluginDown: (String) -> Unit,
+    onOpenFullscreen: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Plugins", fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Plugins", fontWeight = FontWeight.Bold)
+
+                Button(onClick = onOpenFullscreen) {
+                    Text("Open Fullscreen")
+                }
+            }
 
             if (plugins.isEmpty()) {
                 Text("No plugins found.")
             } else {
-                plugins.forEach { plugin ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = "${plugin.priority.toString().padStart(3, '0')} | ${plugin.pluginName} | ${plugin.pluginType}",
-                                fontWeight = FontWeight.Bold
-                            )
+                plugins.sortedBy { it.priority }.forEach { plugin ->
+                    PluginRow(
+                        plugin = plugin,
+                        onTogglePlugin = onTogglePlugin,
+                        onMovePluginUp = onMovePluginUp,
+                        onMovePluginDown = onMovePluginDown
+                    )
+                }
+            }
+        }
+    }
+}
 
-                            Text(if (plugin.enabled) "Enabled" else "Disabled")
+@Composable
+fun PluginRow(
+    plugin: PluginEntry,
+    onTogglePlugin: (String) -> Unit,
+    onMovePluginUp: (String) -> Unit,
+    onMovePluginDown: (String) -> Unit
+) {
+    val sourceLabel = when (plugin.sourceType) {
+        "base_game" -> "Base Game"
+        "official_dlc" -> "Official DLC"
+        "unmanaged_data" -> "Unmanaged Data Folder"
+        "managed_mod" -> plugin.sourceModName
+        else -> plugin.sourceModName
+    }
 
-                            val sourceLabel = when (plugin.sourceType) {
-                                "base_game" -> "Base Game"
-                                "official_dlc" -> "Official DLC"
-                                "unmanaged_data" -> "Unmanaged Data Folder"
-                                "managed_mod" -> plugin.sourceModName
-                                else -> plugin.sourceModName
-                            }
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "${plugin.priority.toString().padStart(3, '0')} | ${plugin.pluginName} | ${plugin.pluginType}",
+                fontWeight = FontWeight.Bold
+            )
 
-                            Text("From: $sourceLabel")
+            Text(if (plugin.enabled) "Enabled" else "Disabled")
+            Text("From: $sourceLabel")
 
-                            if (plugin.sourceType == "unmanaged_data") {
-                                Text(
-                                    text = "Detected in target Data folder",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
+            if (plugin.sourceType == "unmanaged_data") {
+                Text(
+                    text = "Detected in target Data folder",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
 
-                            if (plugin.locked) {
-                                Text(
-                                    text = "Locked official plugin",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
+            if (plugin.locked) {
+                Text(
+                    text = "Locked official plugin",
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    enabled = !plugin.locked,
-                                    onClick = { onTogglePlugin(plugin.normalizedPath) }
-                                ) {
-                                    Text(if (plugin.enabled) "Disable" else "Enable")
-                                }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    enabled = !plugin.locked,
+                    onClick = { onTogglePlugin(plugin.normalizedPath) }
+                ) {
+                    Text(if (plugin.enabled) "Disable" else "Enable")
+                }
 
-                                Button(
-                                    enabled = !plugin.locked,
-                                    onClick = { onMovePluginUp(plugin.normalizedPath) }
-                                ) {
-                                    Text("Up")
-                                }
+                Button(
+                    enabled = !plugin.locked,
+                    onClick = { onMovePluginUp(plugin.normalizedPath) }
+                ) {
+                    Text("Up")
+                }
 
-                                Button(
-                                    enabled = !plugin.locked,
-                                    onClick = { onMovePluginDown(plugin.normalizedPath) }
-                                ) {
-                                    Text("Down")
-                                }
-                            }
-                        }
-                    }
+                Button(
+                    enabled = !plugin.locked,
+                    onClick = { onMovePluginDown(plugin.normalizedPath) }
+                ) {
+                    Text("Down")
                 }
             }
         }
@@ -992,3 +1021,112 @@ fun FilePreviewSection(
         }
     }
 }
+
+@Composable
+fun FullscreenModsPanel(
+    mods: List<Mod>,
+    modContentIndexes: Map<String, ModContentIndex>,
+    onToggleMod: (String) -> Unit,
+    onMoveModUp: (String) -> Unit,
+    onMoveModDown: (String) -> Unit,
+    onDeleteMod: (Mod) -> Unit,
+    onViewModFiles: (String) -> Unit,
+    onClose: () -> Unit
+) {
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Mods",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Button(onClick = onClose) {
+                    Text("Close")
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                mods.sortedBy { it.priority }.forEach { mod ->
+                    CompactModRow(
+                        mod = mod,
+                        contentIndex = modContentIndexes[mod.id],
+                        onToggleMod = onToggleMod,
+                        onMoveModUp = onMoveModUp,
+                        onMoveModDown = onMoveModDown,
+                        onDeleteMod = onDeleteMod,
+                        onViewModFiles = onViewModFiles
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun FullscreenPluginsPanel(
+    plugins: List<PluginEntry>,
+    onTogglePlugin: (String) -> Unit,
+    onMovePluginUp: (String) -> Unit,
+    onMovePluginDown: (String) -> Unit,
+    onClose: () -> Unit
+) {
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Plugins",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Button(onClick = onClose) {
+                    Text("Close")
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                plugins.sortedBy { it.priority }.forEach { plugin ->
+                    PluginRow(
+                        plugin = plugin,
+                        onTogglePlugin = onTogglePlugin,
+                        onMovePluginUp = onMovePluginUp,
+                        onMovePluginDown = onMovePluginDown
+                    )
+                }
+            }
+        }
+    }
+}
+

@@ -16,6 +16,7 @@ import com.shonkware.droidmodloader.engine.model.GameProfile
 import com.shonkware.droidmodloader.engine.index.ModContentIndex
 import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstall
 import com.shonkware.droidmodloader.engine.index.ModFilePreview
+import com.shonkware.droidmodloader.ui.FullscreenPanel
 
 data class DashboardUiState(
     val appName: String,
@@ -54,6 +55,7 @@ data class DashboardUiState(
     val showModFilePreviewDialog: Boolean,
     val modFilePreviewFullscreen: Boolean,
     val secondScreenEnabled: Boolean,
+    val fullscreenPanel: FullscreenPanel,
 )
 
 data class DashboardActions(
@@ -101,6 +103,10 @@ data class DashboardActions(
     val onToggleModFilePreviewFullscreen: () -> Unit,
 
     val onToggleSecondScreen: () -> Unit,
+
+    val onOpenModsFullscreen: () -> Unit,
+    val onOpenPluginsFullscreen: () -> Unit,
+    val onCloseFullscreenPanel: () -> Unit,
 )
 
 @Composable
@@ -113,6 +119,32 @@ fun DroidModLoaderScreen(
             state = state,
             actions = actions
         )
+        return
+    }
+    if (state.fullscreenPanel == FullscreenPanel.MODS) {
+        FullscreenModsPanel(
+            mods = state.mods,
+            modContentIndexes = state.modContentIndexes,
+            onToggleMod = actions.onToggleMod,
+            onMoveModUp = actions.onMoveModUp,
+            onMoveModDown = actions.onMoveModDown,
+            onDeleteMod = actions.onDeleteMod,
+            onViewModFiles = actions.onViewModFiles,
+            onClose = actions.onCloseFullscreenPanel
+        )
+
+        return
+    }
+
+    if (state.fullscreenPanel == FullscreenPanel.PLUGINS) {
+        FullscreenPluginsPanel(
+            plugins = state.plugins,
+            onTogglePlugin = actions.onTogglePlugin,
+            onMovePluginUp = actions.onMovePluginUp,
+            onMovePluginDown = actions.onMovePluginDown,
+            onClose = actions.onCloseFullscreenPanel
+        )
+
         return
     }
     Scaffold { padding ->
@@ -149,13 +181,15 @@ fun DroidModLoaderScreen(
                 onMoveModUp = actions.onMoveModUp,
                 onMoveModDown = actions.onMoveModDown,
                 onDeleteMod = actions.onDeleteMod,
-                onViewModFiles = actions.onViewModFiles
+                onViewModFiles = actions.onViewModFiles,
+                onOpenFullscreen = actions.onOpenModsFullscreen
             )
             PluginsCard(
                 plugins = state.plugins,
                 onTogglePlugin = actions.onTogglePlugin,
                 onMovePluginUp = actions.onMovePluginUp,
-                onMovePluginDown = actions.onMovePluginDown
+                onMovePluginDown = actions.onMovePluginDown,
+                onOpenFullscreen = actions.onOpenPluginsFullscreen,
             )
             DeploymentSettingsCard(
                 gameOptions = state.gameOptions,
