@@ -14,11 +14,27 @@ class DeploymentManifestRepository(
 
         for (record in records) {
             val obj = JSONObject()
+
             obj.put("normalizedPath", record.normalizedPath)
             obj.put("winningModId", record.winningModId)
             obj.put("sourceFilePath", record.sourceFilePath)
             obj.put("winningModName", record.winningModName)
             obj.put("hash", record.hash)
+
+            obj.put("hadPreExistingTargetFile", record.hadPreExistingTargetFile)
+
+            if (record.backupFilePath == null) {
+                obj.put("backupFilePath", JSONObject.NULL)
+            } else {
+                obj.put("backupFilePath", record.backupFilePath)
+            }
+
+            if (record.backupCreatedAtEpochMillis == null) {
+                obj.put("backupCreatedAtEpochMillis", JSONObject.NULL)
+            } else {
+                obj.put("backupCreatedAtEpochMillis", record.backupCreatedAtEpochMillis)
+            }
+
             array.put(obj)
         }
 
@@ -38,6 +54,21 @@ class DeploymentManifestRepository(
         for (i in 0 until array.length()) {
             val obj = array.getJSONObject(i)
 
+            val backupFilePath = if (obj.has("backupFilePath") && !obj.isNull("backupFilePath")) {
+                obj.optString("backupFilePath").ifBlank { null }
+            } else {
+                null
+            }
+
+            val backupCreatedAtEpochMillis = if (
+                obj.has("backupCreatedAtEpochMillis") &&
+                !obj.isNull("backupCreatedAtEpochMillis")
+            ) {
+                obj.optLong("backupCreatedAtEpochMillis")
+            } else {
+                null
+            }
+
             results.add(
                 DeploymentRecord(
                     normalizedPath = obj.optString("normalizedPath", ""),
@@ -47,7 +78,14 @@ class DeploymentManifestRepository(
                         "winningModName",
                         obj.optString("winningModId", "")
                     ),
-                    hash = obj.optString("hash", "")
+                    hash = obj.optString("hash", ""),
+
+                    hadPreExistingTargetFile = obj.optBoolean(
+                        "hadPreExistingTargetFile",
+                        false
+                    ),
+                    backupFilePath = backupFilePath,
+                    backupCreatedAtEpochMillis = backupCreatedAtEpochMillis
                 )
             )
         }

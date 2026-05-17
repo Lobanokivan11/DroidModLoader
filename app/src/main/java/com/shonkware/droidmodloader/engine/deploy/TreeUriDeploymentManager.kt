@@ -12,20 +12,21 @@ import java.io.IOException
 class TreeUriDeploymentManager(
     private val context: Context,
     private val contentResolver: ContentResolver,
-    private val treeUri: Uri
+    private val treeUri: Uri,
+    private val backupRootDir: File
 ) {
+
+    private data class BackupInfo(
+        val backupFilePath: String,
+        val backupCreatedAtEpochMillis: Long
+    )
 
     private val root: DocumentFile by lazy {
         DocumentFile.fromTreeUri(context, treeUri)
             ?: throw IOException("Could not open selected Tree URI target folder.")
     }
 
-    // Directory path -> DocumentFile directory.
-    // Example: "" -> root, "textures", "textures/armor"
     private val directoryCache = mutableMapOf<String, DocumentFile>()
-
-    // Parent directory path -> child name -> DocumentFile.
-    // This avoids calling parentDir.findFile(name) repeatedly for every file.
     private val childCache = mutableMapOf<String, MutableMap<String, DocumentFile>>()
 
     fun deploy(
@@ -36,6 +37,7 @@ class TreeUriDeploymentManager(
         childCache.clear()
 
         directoryCache[""] = root
+        backupRootDir.mkdirs()
 
         val oldByPath = oldManifest.associateBy { it.normalizedPath }
         val newByPath = newWinningRecords.associateBy { it.normalizedPath }
@@ -58,34 +60,79 @@ class TreeUriDeploymentManager(
             .values
             .sortedBy { it.normalizedPath }
 
+        var backupCount = 0
+        var restoreCount = 0
+        var protectedConflictCount = 0
+
+        val changedRecordsByPath = mutableMapOf<String, DeploymentRecord>()
+
         for (record in removes) {
-            deleteFileIfPresent(record.normalizedPath)
+            val restored = restoreBackupOrDeleteTarget(record)
+            if (restored) {
+                restoreCount++
+            }
         }
 
         for (record in updates) {
-            deleteFileIfPresent(record.normalizedPath)
-            copyRecordToTarget(record)
+            val oldRecord = oldByPath[record.normalizedPath]
+
+            val deployedRecord = copyRecordToTarget(
+                record = record,
+                oldRecord = oldRecord
+            )
+
+            if (deployedRecord.backupFilePath != null && oldRecord?.backupFilePath == null) {
+                backupCount++
+            }
+
+            changedRecordsByPath[deployedRecord.normalizedPath] = deployedRecord
         }
 
         for (record in adds) {
-            copyRecordToTarget(record)
+            val oldRecord = oldByPath[record.normalizedPath]
+
+            val deployedRecord = copyRecordToTarget(
+                record = record,
+                oldRecord = oldRecord
+            )
+
+            if (deployedRecord.backupFilePath != null && oldRecord?.backupFilePath == null) {
+                backupCount++
+            }
+
+            changedRecordsByPath[deployedRecord.normalizedPath] = deployedRecord
         }
 
         val newManifest = newWinningRecords
-            .map { it.toDeploymentRecord() }
+            .map { fileRecord ->
+                val changedRecord = changedRecordsByPath[fileRecord.normalizedPath]
+                if (changedRecord != null) {
+                    changedRecord
+                } else {
+                    fileRecord.toDeploymentRecord(
+                        preservedBackupRecord = oldByPath[fileRecord.normalizedPath]
+                    )
+                }
+            }
             .sortedBy { it.normalizedPath }
 
         val result = DeploymentResult(
             addCount = adds.size,
             removeCount = removes.size,
             updateCount = updates.size,
-            finalRecordCount = newManifest.size
+            finalRecordCount = newManifest.size,
+            backupCount = backupCount,
+            restoreCount = restoreCount,
+            protectedConflictCount = protectedConflictCount
         )
 
         return Pair(newManifest, result)
     }
 
-    private fun copyRecordToTarget(record: FileRecord) {
+    private fun copyRecordToTarget(
+        record: FileRecord,
+        oldRecord: DeploymentRecord?
+    ): DeploymentRecord {
         val sourceFile = File(record.sourceFilePath)
 
         if (!sourceFile.exists() || !sourceFile.isFile) {
@@ -102,11 +149,36 @@ class TreeUriDeploymentManager(
             childName = fileName
         )
 
-        if (existing != null) {
-            if (existing.isDirectory) {
-                throw IOException("Target path is a directory, expected file: ${record.normalizedPath}")
+        if (existing != null && existing.isDirectory) {
+            throw IOException("Target path is a directory, expected file: ${record.normalizedPath}")
+        }
+
+        val backupInfo = when {
+            oldRecord?.backupFilePath != null -> {
+                BackupInfo(
+                    backupFilePath = oldRecord.backupFilePath,
+                    backupCreatedAtEpochMillis = oldRecord.backupCreatedAtEpochMillis
+                        ?: System.currentTimeMillis()
+                )
             }
 
+            oldRecord != null -> {
+                null
+            }
+
+            existing != null && existing.isFile -> {
+                backupExistingTargetFile(
+                    normalizedPath = record.normalizedPath,
+                    targetFile = existing
+                )
+            }
+
+            else -> {
+                null
+            }
+        }
+
+        if (existing != null) {
             existing.delete()
             removeCachedChild(parentPath, fileName)
         }
@@ -127,27 +199,102 @@ class TreeUriDeploymentManager(
         }
 
         putCachedChild(parentPath, fileName, targetFile)
+
+        return record.toDeploymentRecord(
+            preservedBackupRecord = oldRecord,
+            newBackupInfo = backupInfo
+        )
     }
 
-    private fun deleteFileIfPresent(normalizedPath: String) {
-        val parentPath = getParentPath(normalizedPath)
-        val fileName = getFileName(normalizedPath)
+    private fun backupExistingTargetFile(
+        normalizedPath: String,
+        targetFile: DocumentFile
+    ): BackupInfo {
+        val backupFile = resolveInsideBackupRoot(normalizedPath)
+        backupFile.parentFile?.mkdirs()
 
-        val parentDir = getExistingDirectory(parentPath) ?: return
+        contentResolver.openInputStream(targetFile.uri).use { input ->
+            if (input == null) {
+                throw IOException("Could not open existing target file for backup: $normalizedPath")
+            }
 
-        val existing = getCachedChild(
-            parentPath = parentPath,
-            parentDir = parentDir,
-            childName = fileName
-        ) ?: return
-
-        // Do not delete directories through a file-delete path.
-        if (!existing.isFile) {
-            return
+            backupFile.outputStream().use { output ->
+                input.copyTo(output, bufferSize = 256 * 1024)
+            }
         }
 
-        existing.delete()
-        removeCachedChild(parentPath, fileName)
+        return BackupInfo(
+            backupFilePath = backupFile.absolutePath,
+            backupCreatedAtEpochMillis = System.currentTimeMillis()
+        )
+    }
+
+    private fun restoreBackupOrDeleteTarget(record: DeploymentRecord): Boolean {
+        val parentPath = getParentPath(record.normalizedPath)
+        val fileName = getFileName(record.normalizedPath)
+
+        val parentDir = getExistingDirectory(parentPath)
+
+        val existing = if (parentDir != null) {
+            getCachedChild(
+                parentPath = parentPath,
+                parentDir = parentDir,
+                childName = fileName
+            )
+        } else {
+            null
+        }
+
+        val backupPath = record.backupFilePath
+
+        if (backupPath.isNullOrBlank()) {
+            if (existing != null && existing.isFile) {
+                existing.delete()
+                removeCachedChild(parentPath, fileName)
+            }
+
+            return false
+        }
+
+        val backupFile = File(backupPath)
+        if (!backupFile.exists() || !backupFile.isFile) {
+            throw IOException(
+                "Backup file missing; refusing to delete Tree URI target without restore: ${record.normalizedPath}"
+            )
+        }
+
+        if (existing != null) {
+            if (existing.isDirectory) {
+                throw IOException("Target path is a directory, expected file during restore: ${record.normalizedPath}")
+            }
+
+            existing.delete()
+            removeCachedChild(parentPath, fileName)
+        }
+
+        val restoreParentDir = getOrCreateDirectory(parentPath)
+
+        val restoredFile = restoreParentDir.createFile(
+            guessMimeType(fileName),
+            fileName
+        ) ?: throw IOException("Could not recreate target file for backup restore: ${record.normalizedPath}")
+
+        backupFile.inputStream().use { input ->
+            contentResolver.openOutputStream(restoredFile.uri, "w").use { output ->
+                if (output == null) {
+                    throw IOException("Could not open target output stream for backup restore: ${record.normalizedPath}")
+                }
+
+                input.copyTo(output, bufferSize = 256 * 1024)
+            }
+        }
+
+        putCachedChild(parentPath, fileName, restoredFile)
+
+        backupFile.delete()
+        cleanupEmptyBackupParents(backupFile)
+
+        return true
     }
 
     private fun getOrCreateDirectory(path: String): DocumentFile {
@@ -319,6 +466,35 @@ class TreeUriDeploymentManager(
         return normalizedPath.substringAfterLast("/")
     }
 
+    private fun resolveInsideBackupRoot(normalizedPath: String): File {
+        val target = File(backupRootDir, normalizedPath)
+        val rootPath = backupRootDir.canonicalPath + File.separator
+        val targetPath = target.canonicalPath
+
+        if (!targetPath.startsWith(rootPath)) {
+            throw SecurityException("Blocked unsafe Tree URI backup path: $normalizedPath")
+        }
+
+        return target
+    }
+
+    private fun cleanupEmptyBackupParents(startFile: File) {
+        val rootCanonical = backupRootDir.canonicalFile
+        var current = startFile.parentFile?.canonicalFile
+
+        while (current != null) {
+            if (current == rootCanonical) return
+            if (!current.canonicalPath.startsWith(rootCanonical.canonicalPath + File.separator)) return
+
+            val children = current.listFiles()
+            if (children != null && children.isNotEmpty()) return
+
+            val parent = current.parentFile?.canonicalFile
+            current.delete()
+            current = parent
+        }
+    }
+
     private fun guessMimeType(fileName: String): String {
         val lower = fileName.lowercase()
 
@@ -337,13 +513,26 @@ class TreeUriDeploymentManager(
         }
     }
 
-    private fun FileRecord.toDeploymentRecord(): DeploymentRecord {
+    private fun FileRecord.toDeploymentRecord(
+        preservedBackupRecord: DeploymentRecord?,
+        newBackupInfo: BackupInfo? = null
+    ): DeploymentRecord {
+        val backupFilePath = newBackupInfo?.backupFilePath
+            ?: preservedBackupRecord?.backupFilePath
+
+        val backupCreatedAt = newBackupInfo?.backupCreatedAtEpochMillis
+            ?: preservedBackupRecord?.backupCreatedAtEpochMillis
+
         return DeploymentRecord(
             normalizedPath = normalizedPath,
             sourceFilePath = sourceFilePath,
             winningModId = winningModId,
             winningModName = winningModName,
-            hash = hash
+            hash = hash,
+            hadPreExistingTargetFile = backupFilePath != null ||
+                    preservedBackupRecord?.hadPreExistingTargetFile == true,
+            backupFilePath = backupFilePath,
+            backupCreatedAtEpochMillis = backupCreatedAt
         )
     }
 }

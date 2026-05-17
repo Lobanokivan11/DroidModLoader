@@ -466,7 +466,12 @@ class ModEngine(
             realDeployEnabled = config?.realDeployEnabled == true,
             targetTreeUri = config?.targetTreeUri,
             targetPath = config?.targetDataPath ?: "",
-            fallbackRootDir = deployRootDir
+            fallbackRootDir = deployRootDir,
+            backupRootDir = getDeploymentBackupDir(
+                gameId = gameId,
+                scopeName = "data",
+                rootTarget = false
+            )
         )
 
         dataManifestRepository.save(newDataManifest)
@@ -487,7 +492,12 @@ class ModEngine(
                 realDeployEnabled = config?.realDeployEnabled == true,
                 targetTreeUri = config?.targetRootTreeUri,
                 targetPath = config?.targetRootPath ?: "",
-                fallbackRootDir = getSimulatedGameRootDir()
+                fallbackRootDir = getSimulatedGameRootDir(),
+                backupRootDir = getDeploymentBackupDir(
+                    gameId = gameId,
+                    scopeName = "root",
+                    rootTarget = true
+                )
             )
 
             rootManifestRepository.save(newRootManifest)
@@ -513,26 +523,34 @@ class ModEngine(
         realDeployEnabled: Boolean,
         targetTreeUri: String?,
         targetPath: String,
-        fallbackRootDir: File
+        fallbackRootDir: File,
+        backupRootDir: File
     ): Pair<List<com.shonkware.droidmodloader.engine.model.DeploymentRecord>, DeploymentResult> {
         return when {
             realDeployEnabled && !targetTreeUri.isNullOrBlank() -> {
                 val treeDeploymentManager = TreeUriDeploymentManager(
                     context = appContext,
                     contentResolver = appContext.contentResolver,
-                    treeUri = Uri.parse(targetTreeUri)
+                    treeUri = Uri.parse(targetTreeUri),
+                    backupRootDir = backupRootDir
                 )
 
                 treeDeploymentManager.deploy(oldManifest, newWinningRecords)
             }
 
             realDeployEnabled && validateTargetDataPath(targetPath) -> {
-                val deploymentManager = DeploymentManager(File(targetPath))
+                val deploymentManager = DeploymentManager(
+                    deployRootDir = File(targetPath),
+                    backupRootDir = backupRootDir
+                )
                 deploymentManager.deploy(oldManifest, newWinningRecords)
             }
 
             else -> {
-                val deploymentManager = DeploymentManager(fallbackRootDir)
+                val deploymentManager = DeploymentManager(
+                    deployRootDir = fallbackRootDir,
+                    backupRootDir = backupRootDir
+                )
                 deploymentManager.deploy(oldManifest, newWinningRecords)
             }
         }
@@ -553,6 +571,25 @@ class ModEngine(
         return File(
             deployRootDir.parentFile ?: deployRootDir,
             "GameRoot"
+        )
+    }
+
+    private fun getDeploymentBackupDir(
+        gameId: String,
+        scopeName: String,
+        rootTarget: Boolean
+    ): File {
+        val identity = if (rootTarget) {
+            getRootDeploymentTargetIdentity(gameId)
+        } else {
+            getDeploymentTargetIdentity(gameId)
+        }
+
+        val hash = hashManifestKey(identity.stableKey())
+
+        return File(
+            deploymentManifestFile.parentFile,
+            "deployment_backups/${identity.gameId}_${identity.mode}_$hash/$scopeName"
         )
     }
 

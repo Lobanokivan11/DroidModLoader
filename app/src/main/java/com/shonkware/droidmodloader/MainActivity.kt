@@ -203,7 +203,7 @@ class MainActivity : ComponentActivity() {
     private fun buildUiState(): DashboardUiState {
         return DashboardUiState(
             appName = "Droid Mod Loader",
-            versionLabel = "Version 0.4 Beta",
+            versionLabel = "Version 0.5.1 Beta",
             developerModeEnabled = developerModeEnabled,
             lastOperationStatus = lastOperationStatus,
             summaryText = summaryText,
@@ -477,6 +477,9 @@ class MainActivity : ComponentActivity() {
         appendLog("  Adds: ${result.addCount}")
         appendLog("  Removes: ${result.removeCount}")
         appendLog("  Updates: ${result.updateCount}")
+        appendLog("  Backups created: ${result.backupCount}")
+        appendLog("  Backups restored: ${result.restoreCount}")
+        appendLog("  Protected conflicts: ${result.protectedConflictCount}")
         appendLog("  Final file count: ${result.finalRecordCount}")
     }
     private fun timestampNow(): String {
@@ -1295,6 +1298,9 @@ class MainActivity : ComponentActivity() {
             appendLog("  Adds: ${result.addCount}")
             appendLog("  Removes: ${result.removeCount}")
             appendLog("  Updates: ${result.updateCount}")
+            appendLog("  Backups created: ${result.dataResult.backupCount + result.rootResult.backupCount}")
+            appendLog("  Backups restored: ${result.dataResult.restoreCount + result.rootResult.restoreCount}")
+            appendLog("  Protected conflicts: ${result.dataResult.protectedConflictCount + result.rootResult.protectedConflictCount}")
             appendLog("  Final file count: ${result.finalRecordCount}")
 
             appendLog("RESULT: PASS")
