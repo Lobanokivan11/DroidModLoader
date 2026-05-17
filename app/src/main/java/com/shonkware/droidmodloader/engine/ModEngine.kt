@@ -3,7 +3,6 @@ package com.shonkware.droidmodloader.engine
 import com.shonkware.droidmodloader.engine.conflict.ConflictResolver
 import com.shonkware.droidmodloader.engine.data.ModStateRepository
 import com.shonkware.droidmodloader.engine.install.ModInstaller
-import com.shonkware.droidmodloader.engine.io.FileScanner
 import com.shonkware.droidmodloader.engine.data.InstalledModRecordRepository
 import com.shonkware.droidmodloader.engine.model.InstalledModRecord
 import com.shonkware.droidmodloader.engine.model.FileRecord
@@ -45,6 +44,8 @@ import com.shonkware.droidmodloader.engine.overwrite.OverwriteScanResult
 import com.shonkware.droidmodloader.engine.deploy.DeploymentTargetIdentity
 import java.security.MessageDigest
 import com.shonkware.droidmodloader.engine.plugins.ManagedPluginScanner
+import com.shonkware.droidmodloader.engine.index.ModFileIndexRepository
+import com.shonkware.droidmodloader.engine.index.ModFileIndexService
 
 data class UninstallResult(
     val removed: Boolean,
@@ -75,6 +76,11 @@ class ModEngine(
     private val pluginListRepository = PluginListRepository(pluginListFile)
     private val managedPluginScanner = ManagedPluginScanner()
     private val modContentIndexer = ModContentIndexer()
+    private val modFileIndexService = ModFileIndexService(
+        ModFileIndexRepository(
+            File(stateFile.parentFile, "mod_file_indexes")
+        )
+    )
     private val overwriteScanner = OverwriteScanner(appContext)
     private val preparedArchiveInstaller = PreparedArchiveInstaller(
         tempDir = tempDir,
@@ -102,15 +108,17 @@ class ModEngine(
     }
 
     fun scanMod(mod: Mod): List<ModFile> {
-        val modDir = File(mod.installPath)
-        val scanner = FileScanner()
-        scanner.scanDirectory(modDir, modDir, mod.name)
+        val index = modFileIndexService.getOrBuildIndex(mod)
 
-        return convertScannerResultsToModFiles(
-            modId = mod.id,
-            sourceModName = mod.name,
-            fileMap = scanner.getFileMap()
-        )
+        return index.entries.map { entry ->
+            ModFile(
+                modId = mod.id,
+                sourceModName = mod.name,
+                originalPath = entry.originalPath,
+                normalizedPath = entry.normalizedPath,
+                hash = entry.hash
+            )
+        }
     }
 
     fun scanMods(mods: List<Mod>): List<ModFile> {
@@ -212,6 +220,8 @@ class ModEngine(
             0
         }
 
+        modFileIndexService.deleteIndex(modToRemove)
+
         if (modDir.exists()) {
             modDir.deleteRecursively()
         }
@@ -309,29 +319,6 @@ class ModEngine(
             hasLooseGameFiles -> ModType.LOOSE
             else -> ModType.ARCHIVE
         }
-    }
-
-    private fun convertScannerResultsToModFiles(
-        modId: String,
-        sourceModName: String,
-        fileMap: Map<String, List<com.shonkware.droidmodloader.engine.io.FileInfo>>): List<ModFile> {
-        val results = mutableListOf<ModFile>()
-
-        for ((_, infos) in fileMap) {
-            for (info in infos) {
-                results.add(
-                    ModFile(
-                        modId = modId,
-                        sourceModName = sourceModName,
-                        originalPath = info.originalPath,
-                        normalizedPath = info.normalizedPath,
-                        hash = info.hash
-                    )
-                )
-            }
-        }
-
-        return results
     }
 
     private fun writeInstalledModRecord(
@@ -549,6 +536,25 @@ class ModEngine(
         return Pair(pluginsTxt, loadorderTxt)
     }
 
+    fun exportSavedPluginOutputs(): Pair<String, String> {
+        val plugins = loadPlugins().sortedBy { it.priority }
+
+        val pluginsTxt = buildPluginsTxt(plugins)
+        val loadorderTxt = buildLoadorderTxt(plugins)
+
+        pluginOutputRepository.savePluginsTxt(pluginsTxt)
+        pluginOutputRepository.saveLoadorderTxt(loadorderTxt)
+
+        return Pair(pluginsTxt, loadorderTxt)
+    }
+
+    fun getPluginOutputFilePaths(): Pair<String, String> {
+        return Pair(
+            pluginsTxtFile.absolutePath,
+            loadorderTxtFile.absolutePath
+        )
+    }
+
     fun readExportedPluginsTxt(): String {
         return pluginOutputRepository.readPluginsTxt()
     }
@@ -594,11 +600,17 @@ class ModEngine(
             sourceArchiveName = prepared.archiveName
         )
 
-        return buildModFromInstalledFolder(
+        val installedMod = buildModFromInstalledFolder(
             modDir = finalDir,
             priority = priority,
             enabled = enabled
         )
+
+// Build the index during install so first deploy after import does not need
+// to hash the entire mod again.
+        modFileIndexService.rebuildIndex(installedMod)
+
+        return installedMod
     }
 
     fun cancelPreparedArchiveInstall(prepared: PreparedArchiveInstall) {
@@ -1157,5 +1169,9 @@ class ModEngine(
         }
     }
 
-
+    fun rebuildModFileIndex(modId: String): Boolean {
+        val mod = getCurrentMods().firstOrNull { it.id == modId } ?: return false
+        modFileIndexService.rebuildIndex(mod)
+        return true
+    }
 }

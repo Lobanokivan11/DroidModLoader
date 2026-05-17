@@ -1369,33 +1369,58 @@ class MainActivity : ComponentActivity() {
 
     private fun runWriteLoadOrderFilesWorkflow() {
         if (operationInProgress) {
-            appendLog("Ignoring load order write request: operation already in progress.")
+            appendLog("Ignoring plugin file write request: operation already in progress.")
             return
         }
 
-        beginOperation("Writing load order files...")
+        beginOperation("Writing plugin files...")
 
-        val engine = createModEngineForWorkflows() ?: return
-
-        try {
-            syncPluginsFromCurrentState(engine)
-            val (pluginsTxt, loadorderTxt) = engine.exportCurrentPluginOutputs()
-
-            appendLog("plugins.txt contents:")
-            appendLog(pluginsTxt.ifBlank { "(empty)" })
-
-            appendLog("loadorder.txt contents:")
-            appendLog(loadorderTxt.ifBlank { "(empty)" })
-
-            appendLog("RESULT: PASS")
-            finishOperation("Load order files written successfully.")
-        } catch (e: Exception) {
-            appendError("Write load order files workflow failed: ${e.message}", e)
-            appendLog("RESULT: FAIL")
-            failOperation("Writing load order files failed: ${e.message}", e)
+        val engine = createModEngineForWorkflows()
+        if (engine == null) {
+            failOperation("Writing plugin files failed: engine could not be created.")
+            return
         }
 
-        appendLog("----- Write Load Order Files Workflow End -----")
+        try {
+            val savedPlugins = engine.loadPlugins().sortedBy { it.priority }
+
+            if (savedPlugins.isEmpty()) {
+                appendLog("No saved plugin list found. Refreshing plugin list once before writing files.")
+                syncPluginsFromCurrentState(engine)
+            }
+
+            val pluginsAfterFallback = engine.loadPlugins().sortedBy { it.priority }
+
+            if (pluginsAfterFallback.isEmpty()) {
+                appendLog("No plugins available to write.")
+                appendLog("RESULT: FAIL")
+                failOperation("Writing plugin files failed: no plugins available.")
+                return
+            }
+
+            val (pluginsTxt, loadorderTxt) = engine.exportSavedPluginOutputs()
+            val (pluginsTxtPath, loadorderTxtPath) = engine.getPluginOutputFilePaths()
+
+            val enabledPluginCount = pluginsAfterFallback.count { it.enabled }
+
+            appendLog("Plugin files written from saved plugin list.")
+            appendLog("Plugin count: ${pluginsAfterFallback.size}")
+            appendLog("Enabled plugin count: $enabledPluginCount")
+            appendLog("plugins.txt path: $pluginsTxtPath")
+            appendLog("loadorder.txt path: $loadorderTxtPath")
+            appendLog("plugins.txt line count: ${pluginsTxt.lines().filter { it.isNotBlank() }.size}")
+            appendLog("loadorder.txt line count: ${loadorderTxt.lines().filter { it.isNotBlank() }.size}")
+            appendLog("RESULT: PASS")
+
+            finishOperation("Plugin files written successfully.")
+        } catch (e: Exception) {
+            appendError("Write plugin files workflow failed: ${e.message}", e)
+            appendLog("RESULT: FAIL")
+            failOperation("Writing plugin files failed: ${e.message}", e)
+        }
+
+        refreshDashboard()
+        appendLog("----- Write Plugin Files Workflow End -----")
     }
 
     private fun migratePrioritySpacingIfNeeded() {

@@ -122,7 +122,7 @@ fun QuickStartCard() {
             Text("1. Pick target folder")
             Text("2. Import archive")
             Text("3. Deploy mods")
-            Text("4. Write load order files if needed")
+            Text("4. Write plugin files if needed")
             Text("5. Share logs if something fails")
         }
     }
@@ -163,7 +163,7 @@ fun MainActionsCard(
                 onClick = onWriteLoadOrderFiles,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Write Load Order Files")
+                Text("Write Plugin Files")
             }
         }
     }

@@ -122,7 +122,7 @@ class TreeUriDeploymentManager(
                     throw IOException("Could not open target output stream: ${record.normalizedPath}")
                 }
 
-                input.copyTo(output)
+                input.copyTo(output, bufferSize = 256 * 1024)
             }
         }
 
