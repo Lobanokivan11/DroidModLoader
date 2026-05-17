@@ -1,8 +1,5 @@
 package com.shonkware.droidmodloader.engine
 
-import com.shonkware.droidmodloader.engine.build.StagingManager
-import com.shonkware.droidmodloader.engine.build.DiffEngine
-import com.shonkware.droidmodloader.engine.build.FileChange
 import com.shonkware.droidmodloader.engine.conflict.ConflictResolver
 import com.shonkware.droidmodloader.engine.data.ModStateRepository
 import com.shonkware.droidmodloader.engine.install.ModInstaller
@@ -26,7 +23,6 @@ import android.net.Uri
 import com.shonkware.droidmodloader.engine.deploy.TreeUriDeploymentManager
 import com.shonkware.droidmodloader.engine.data.PluginListRepository
 import com.shonkware.droidmodloader.engine.model.PluginEntry
-import com.shonkware.droidmodloader.engine.plugins.PluginDiscovery
 import com.shonkware.droidmodloader.engine.data.PluginOutputRepository
 import com.shonkware.droidmodloader.engine.index.ModContentIndex
 import com.shonkware.droidmodloader.engine.index.ModContentIndexer
@@ -48,20 +44,18 @@ import com.shonkware.droidmodloader.engine.baseline.DataBaselineSnapshot
 import com.shonkware.droidmodloader.engine.overwrite.OverwriteScanResult
 import com.shonkware.droidmodloader.engine.deploy.DeploymentTargetIdentity
 import java.security.MessageDigest
+import com.shonkware.droidmodloader.engine.plugins.ManagedPluginScanner
 
 data class UninstallResult(
     val removed: Boolean,
     val removedModId: String,
-    val addCount: Int,
-    val removeCount: Int,
-    val updateCount: Int
+    val deletedFileCount: Int
 )
 
 class ModEngine(
     private val appContext: Context,
     private val tempDir: File,
     private val modsDir: File,
-    private val stagingDir: File,
     private val stateFile: File,
     private val deploymentManifestFile: File,
     private val deployRootDir: File,
@@ -74,19 +68,14 @@ class ModEngine(
 
     private val modInstaller = ModInstaller(tempDir, modsDir)
     private val resolver = ConflictResolver()
-    private val stagingManager = StagingManager(stagingDir)
     private val stateRepository = ModStateRepository(stateFile)
     private val installedModRecordRepository = InstalledModRecordRepository()
     private val deployFileClassifier = DeployFileClassifier()
-    private val deploymentManifestRepository = DeploymentManifestRepository(deploymentManifestFile)
-    private val deploymentManager = DeploymentManager(deployRootDir)
     private val gameDeploymentConfigRepository = GameDeploymentConfigRepository(gameConfigFile)
     private val pluginListRepository = PluginListRepository(pluginListFile)
-    private val pluginDiscovery = PluginDiscovery()
+    private val managedPluginScanner = ManagedPluginScanner()
     private val modContentIndexer = ModContentIndexer()
-
     private val overwriteScanner = OverwriteScanner(appContext)
-
     private val preparedArchiveInstaller = PreparedArchiveInstaller(
         tempDir = tempDir,
         modsDir = modsDir
@@ -97,14 +86,6 @@ class ModEngine(
     )
     private val dataFolderPluginScanner = DataFolderPluginScanner(appContext)
     private val gamePluginRules = GamePluginRules()
-
-
-
-    fun installArchive(archive: File, priority: Int, enabled: Boolean = true): Mod {
-        val extractedDir = modInstaller.installArchive(archive)
-        return buildModFromInstalledFolder(extractedDir, priority, enabled)
-    }
-
     fun buildModFromInstalledFolder(
         modDir: File,
         priority: Int,
@@ -143,15 +124,18 @@ class ModEngine(
     }
 
     fun resolve(mods: List<Mod>): List<FileRecord> {
-        val modFiles = scanMods(mods)
-        val deployableModFiles = filterDeployableModFiles(modFiles)
-        return resolver.resolve(mods, deployableModFiles)
-    }
+        val enabledMods = mods
+            .filter { it.enabled }
+            .sortedBy { it.priority }
 
-    fun rebuildStaging(mods: List<Mod>): List<FileRecord> {
-        val winningRecords = resolve(mods)
-        stagingManager.rebuildStaging(winningRecords)
-        return winningRecords
+        if (enabledMods.isEmpty()) {
+            return emptyList()
+        }
+
+        val modFiles = scanMods(enabledMods)
+        val deployableModFiles = filterDeployableModFiles(modFiles)
+
+        return resolver.resolve(enabledMods, deployableModFiles)
     }
 
     fun saveMods(mods: List<Mod>) {
@@ -180,11 +164,6 @@ class ModEngine(
         }
     }
 
-    fun rebuildStagingFromInstalledMods(): List<FileRecord> {
-        val mods = getInstalledModsFromFolders()
-        return rebuildStaging(mods)
-    }
-
     fun saveInstalledModsFromFolders(): List<Mod> {
         val mods = getInstalledModsFromFolders()
         saveMods(mods)
@@ -199,14 +178,14 @@ class ModEngine(
             getInstalledModsFromFolders()
         }
     }
+    fun getEnabledCurrentMods(): List<Mod> {
+        return getCurrentMods()
+            .filter { it.enabled }
+            .sortedBy { it.priority }
+    }
 
     fun saveCurrentMods(mods: List<Mod>) {
         saveMods(normalizeModPriorities(mods))
-    }
-
-    fun rebuildStagingFromCurrentState(): List<FileRecord> {
-        val mods = getCurrentMods()
-        return rebuildStaging(mods)
     }
 
     fun uninstallModAndApplyDiff(modId: String): UninstallResult {
@@ -215,12 +194,8 @@ class ModEngine(
             ?: return UninstallResult(
                 removed = false,
                 removedModId = modId,
-                addCount = 0,
-                removeCount = 0,
-                updateCount = 0
+                deletedFileCount = 0
             )
-
-        val oldWinningRecords = resolve(currentMods)
 
         val remainingMods = currentMods
             .filterNot { it.id == modId }
@@ -230,14 +205,13 @@ class ModEngine(
 
         saveCurrentMods(remainingMods)
 
-        val newWinningRecords = resolve(remainingMods)
-
-        val diffEngine = DiffEngine()
-        val changes = diffEngine.diff(oldWinningRecords, newWinningRecords)
-
-        stagingManager.applyChanges(changes)
-
         val modDir = File(modToRemove.installPath)
+        val deletedFileCount = if (modDir.exists()) {
+            modDir.walkTopDown().count { it.isFile }
+        } else {
+            0
+        }
+
         if (modDir.exists()) {
             modDir.deleteRecursively()
         }
@@ -245,17 +219,16 @@ class ModEngine(
         return UninstallResult(
             removed = true,
             removedModId = modId,
-            addCount = changes.count { it is FileChange.Add },
-            removeCount = changes.count { it is FileChange.Remove },
-            updateCount = changes.count { it is FileChange.Update }
+            deletedFileCount = deletedFileCount
         )
     }
 
     fun resetAllAppData(importsDir: File): Boolean {
+        // importsDir is legacy cleanup for old builds that copied selected archives
+        // into externalFilesDir/imports. New installs use temporary profile cache.
         return try {
             if (tempDir.exists()) tempDir.deleteRecursively()
             if (modsDir.exists()) modsDir.deleteRecursively()
-            if (stagingDir.exists()) stagingDir.deleteRecursively()
             if (importsDir.exists()) importsDir.deleteRecursively()
             if (stateFile.exists()) stateFile.delete()
             if (gameConfigFile.exists()) {
@@ -292,7 +265,6 @@ class ModEngine(
 
             tempDir.mkdirs()
             modsDir.mkdirs()
-            stagingDir.mkdirs()
             stateFile.parentFile?.mkdirs()
 
             true
@@ -438,21 +410,7 @@ class ModEngine(
     }
 
     fun getCurrentWinningRecords(): List<FileRecord> {
-        return resolve(getCurrentMods())
-    }
-
-    fun deployCurrentState(): DeploymentResult {
-        val oldManifest = deploymentManifestRepository.load()
-        val newWinningRecords = getCurrentWinningRecords()
-
-        val (newManifest, result) = deploymentManager.deploy(oldManifest, newWinningRecords)
-        deploymentManifestRepository.save(newManifest)
-
-        return result
-    }
-
-    fun clearDeploymentManifest() {
-        deploymentManifestRepository.clear()
+        return resolve(getEnabledCurrentMods())
     }
 
     fun saveGameDeploymentConfigs(configs: List<GameDeploymentConfig>) {
@@ -526,8 +484,7 @@ class ModEngine(
     }
 
     fun discoverPluginsFromCurrentMods(): List<PluginEntry> {
-        val winningRecords = getCurrentWinningRecords()
-        return pluginDiscovery.discoverPluginsFromWinningRecords(winningRecords)
+        return managedPluginScanner.discoverPluginsFromEnabledMods(getCurrentMods())
     }
 
     fun saveDiscoveredPlugins(): List<PluginEntry> {

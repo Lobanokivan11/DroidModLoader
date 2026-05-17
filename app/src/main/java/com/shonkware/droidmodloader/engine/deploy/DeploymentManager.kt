@@ -47,7 +47,7 @@ class DeploymentManager(
             FileRecord(
                 normalizedPath = it.normalizedPath,
                 winningModId = it.winningModId,
-                winningModName = it.winningModId,
+                winningModName = it.winningModName,
                 sourceFilePath = it.sourceFilePath,
                 hash = it.hash
             )
@@ -82,8 +82,8 @@ class DeploymentManager(
                 normalizedPath = it.normalizedPath,
                 winningModId = it.winningModId,
                 sourceFilePath = it.sourceFilePath,
-                hash = it.hash,
-                deployedRelativePath = it.normalizedPath
+                winningModName = it.winningModName,
+                hash = it.hash
             )
         }
 

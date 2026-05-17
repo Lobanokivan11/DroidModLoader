@@ -526,7 +526,6 @@ class MainActivity : ComponentActivity() {
 
         val tempDir = File(profileInternalDir, "temp")
         val modsDir = File(profileInternalDir, "mods")
-        val stagingDir = File(profileInternalDir, "staging")
 
         val stateFile = File(profileStateDir, "installed_mods.json")
         val pluginListFile = File(profileStateDir, "plugins.json")
@@ -542,7 +541,6 @@ class MainActivity : ComponentActivity() {
 
         tempDir.mkdirs()
         modsDir.mkdirs()
-        stagingDir.mkdirs()
         profileStateDir.mkdirs()
         deployDir.mkdirs()
 
@@ -550,7 +548,6 @@ class MainActivity : ComponentActivity() {
             appContext = applicationContext,
             tempDir = tempDir,
             modsDir = modsDir,
-            stagingDir = stagingDir,
             stateFile = stateFile,
             deploymentManifestFile = deploymentManifestFile,
             deployRootDir = deployDir,
@@ -581,18 +578,44 @@ class MainActivity : ComponentActivity() {
     private fun getProfileStateDir(externalBaseDir: File): File {
         return File(externalBaseDir, "state/profiles/${getActiveProfileStorageKey()}")
     }
-    private fun copyUriToAppFile(uri: Uri, destinationFile: File) {
-        contentResolver.openInputStream(uri).use { inputStream ->
-            if (inputStream == null) {
+    private fun copyUriToFile(uri: Uri, destinationFile: File): File {
+        destinationFile.parentFile?.mkdirs()
+
+        contentResolver.openInputStream(uri).use { input ->
+            if (input == null) {
                 throw IllegalStateException("Could not open input stream for selected file.")
             }
 
-            destinationFile.parentFile?.mkdirs()
-
-            destinationFile.outputStream().use { outputStream ->
-                inputStream.copyTo(outputStream)
+            destinationFile.outputStream().use { output ->
+                input.copyTo(output)
             }
         }
+
+        return destinationFile
+    }
+    private fun copyUriToTemporaryArchiveFile(uri: Uri, sanitizedName: String): File {
+        cleanOldTemporaryImportSources()
+
+        val tempSourceDir = File(getProfileInternalDir(), "temp/import_sources")
+        tempSourceDir.mkdirs()
+
+        val tempArchive = File(
+            tempSourceDir,
+            "${System.currentTimeMillis()}_$sanitizedName"
+        )
+
+        return copyUriToFile(uri, tempArchive)
+    }
+    private fun cleanOldTemporaryImportSources(maxAgeMillis: Long = 24L * 60L * 60L * 1000L) {
+        val tempSourceDir = File(getProfileInternalDir(), "temp/import_sources")
+        if (!tempSourceDir.exists()) return
+
+        val now = System.currentTimeMillis()
+
+        tempSourceDir.listFiles()
+            ?.filter { it.isFile }
+            ?.filter { now - it.lastModified() > maxAgeMillis }
+            ?.forEach { it.delete() }
     }
     private fun migrateLegacyGlobalStateIfNeeded() {
         val externalBaseDir = getExternalFilesDir(null)
@@ -746,34 +769,24 @@ class MainActivity : ComponentActivity() {
         beginOperation("Importing archive...")
 
         val engine = createModEngineForWorkflows() ?: return
-        val externalBaseDir = getExternalFilesDir(null)
-        if (externalBaseDir == null) {
-            appendError("External files directory is null")
-            appendLog("RESULT: FAIL")
-            updateLastOperationStatus("Import archive failed: external files directory is null.")
-            appendLog("----- Import Archive Workflow End -----")
-            return
-        }
-
-        val importsDir = File(externalBaseDir, "imports")
-        importsDir.mkdirs()
-
         val fileName = queryDisplayName(uri) ?: "imported_mod"
         val sanitizedName = fileName.replace(Regex("""[^\w.\- ]"""), "_")
-        val importedArchive = File(importsDir, sanitizedName)
+
+        var temporaryArchive: File? = null
 
         try {
-            copyUriToAppFile(uri, importedArchive)
+            temporaryArchive = copyUriToTemporaryArchiveFile(uri, sanitizedName)
 
-            appendLog("Imported file copied to: ${importedArchive.absolutePath}")
-            appendLog("Imported file exists: ${importedArchive.exists()}")
-            appendLog("Imported file size: ${importedArchive.length()} bytes")
+            appendLog("Selected archive copied to temporary install cache: ${temporaryArchive.name}")
+            appendLog("Temporary archive size: ${temporaryArchive.length()} bytes")
             appendLog("About to install imported archive using engine...")
 
             val existingMods = engine.getInstalledModsFromFolders()
             val nextPriority = if (existingMods.isEmpty()) 1 else (existingMods.maxOf { it.priority } + 1)
 
-            val prepared = engine.prepareArchiveInstall(importedArchive)
+            val prepared = engine.prepareArchiveInstall(temporaryArchive)
+            temporaryArchive.delete()
+            temporaryArchive = null
 
             if (prepared.plan.requiresUserChoice) {
                 runOnUiThread {
@@ -813,6 +826,8 @@ class MainActivity : ComponentActivity() {
             appendLog("RESULT: PASS")
             finishOperation("Archive imported successfully.")
         } catch (t: Throwable) {
+            temporaryArchive?.delete()
+
             appendLog("CRASH TYPE: ${t::class.java.name}")
             appendLog("RESULT: FAIL")
             failOperation("Import archive failed: ${t.message}", t)
@@ -900,10 +915,8 @@ class MainActivity : ComponentActivity() {
             }
 
             appendLog("Deleted mod: ${result.removedModId}")
-            appendLog("Staging changes after delete:")
-            appendLog("  Adds: ${result.addCount}")
-            appendLog("  Removes: ${result.removeCount}")
-            appendLog("  Updates: ${result.updateCount}")
+            appendLog("Deleted installed mod files: ${result.deletedFileCount}")
+            appendLog("Deploy again to remove this mod's files from the selected game Data folder.")
 
             syncPluginsFromCurrentState(engine)
 
@@ -982,7 +995,8 @@ class MainActivity : ComponentActivity() {
                 .setTitle("Delete Mod")
                 .setMessage(
                     "Are you sure you want to delete '${mod.name}'?\n\n" +
-                            "This will permanently remove the installed mod folder and update staging."
+                            "This will permanently remove this installed mod folder from Droid Mod Loader.\n\n" +
+                            "Run Deploy afterward to remove its deployed files from the selected game Data folder."
                 )
                 .setPositiveButton("Delete") { _, _ ->
                     runInBackground { deleteInstalledMod(mod.id) }
@@ -1216,6 +1230,7 @@ class MainActivity : ComponentActivity() {
 
         val dataFolderPlugins = engine.scanDataFolderPlugins(selectedGameId)
         val managedPlugins = engine.discoverPluginsFromCurrentMods()
+        val enabledModCount = engine.getEnabledCurrentMods().size
 
         val officialDataPlugins = dataFolderPlugins.filter {
             it.sourceType == "base_game" || it.sourceType == "official_dlc"
@@ -1276,6 +1291,7 @@ class MainActivity : ComponentActivity() {
         val normalized = engine.normalizePluginPriorities(merged)
         engine.saveCurrentPlugins(normalized)
         appendLog("Selected game: $selectedGameId")
+        appendLog("Enabled mod count scanned for plugins: $enabledModCount")
         appendLog("Data folder plugin count: ${dataFolderPlugins.size}")
         appendLog("Managed plugin count: ${managedPlugins.size}")
         appendLog("Plugin scan complete. Plugin count: ${normalized.size}")

@@ -17,8 +17,8 @@ class DeploymentManifestRepository(
             obj.put("normalizedPath", record.normalizedPath)
             obj.put("winningModId", record.winningModId)
             obj.put("sourceFilePath", record.sourceFilePath)
+            obj.put("winningModName", record.winningModName)
             obj.put("hash", record.hash)
-            obj.put("deployedRelativePath", record.deployedRelativePath)
             array.put(obj)
         }
 
@@ -43,8 +43,11 @@ class DeploymentManifestRepository(
                     normalizedPath = obj.optString("normalizedPath", ""),
                     winningModId = obj.optString("winningModId", ""),
                     sourceFilePath = obj.optString("sourceFilePath", ""),
-                    hash = obj.optString("hash", ""),
-                    deployedRelativePath = obj.optString("deployedRelativePath", "")
+                    winningModName = obj.optString(
+                        "winningModName",
+                        obj.optString("winningModId", "")
+                    ),
+                    hash = obj.optString("hash", "")
                 )
             )
         }
