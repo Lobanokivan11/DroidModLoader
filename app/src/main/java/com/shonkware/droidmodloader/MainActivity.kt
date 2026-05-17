@@ -43,15 +43,16 @@ class MainActivity : ComponentActivity() {
     }
 
     private enum class FolderPickMode {
-        ActiveProfile,
-        NewProfile
+        ActiveDataFolder,
+        ActiveGameRootFolder,
+        NewProfileDataFolder
     }
 
     private var secondScreenController: SecondScreenController? = null
 
     private var secondScreenEnabled by mutableStateOf(false)
 
-    private var folderPickMode by mutableStateOf(FolderPickMode.ActiveProfile)
+    private var folderPickMode by mutableStateOf(FolderPickMode.ActiveDataFolder)
     private var setupComplete by mutableStateOf(false)
     private var activeProfileId by mutableStateOf<String?>(null)
     private var profileNameText by mutableStateOf("Default")
@@ -84,6 +85,8 @@ class MainActivity : ComponentActivity() {
     private var selectedGameId by mutableStateOf("skyrim_le")
     private var targetPathText by mutableStateOf("")
     private var selectedTreeUriText by mutableStateOf("No folder selected")
+    private var selectedRootTreeUriText by mutableStateOf("No root folder selected")
+    private var rootTargetPathText by mutableStateOf("")
     private var realDeployEnabledState by mutableStateOf(false)
 
     private var pendingArchiveInstall by mutableStateOf<PreparedArchiveInstall?>(null)
@@ -134,15 +137,19 @@ class MainActivity : ComponentActivity() {
 
             runInBackground {
                 when (folderPickMode) {
-                    FolderPickMode.ActiveProfile -> {
-                        savePickedFolderToSelectedGameConfig(uriString)
+                    FolderPickMode.ActiveDataFolder -> {
+                        savePickedDataFolderToSelectedGameConfig(uriString)
                     }
 
-                    FolderPickMode.NewProfile -> {
+                    FolderPickMode.ActiveGameRootFolder -> {
+                        savePickedRootFolderToSelectedGameConfig(uriString)
+                    }
+
+                    FolderPickMode.NewProfileDataFolder -> {
                         runOnUiThread {
                             newProfileTreeUriText = uriString
                         }
-                        appendLog("Selected target folder for new profile.")
+                        appendLog("Selected Data folder for new profile.")
                     }
                 }
             }
@@ -236,6 +243,7 @@ class MainActivity : ComponentActivity() {
             showOverwriteDialog = showOverwriteDialog,
             overwriteBaselineExists = overwriteBaselineExists,
             overwriteMessage = overwriteMessage,
+            selectedRootTreeUriText = selectedRootTreeUriText,
 
         )
     }
@@ -296,7 +304,11 @@ class MainActivity : ComponentActivity() {
                 realDeployEnabledState = enabled
             },
             onPickTargetFolder = {
-                folderPickMode = FolderPickMode.ActiveProfile
+                folderPickMode = FolderPickMode.ActiveDataFolder
+                pickTargetFolderLauncher.launch(null)
+            },
+            onPickRootTargetFolder = {
+                folderPickMode = FolderPickMode.ActiveGameRootFolder
                 pickTargetFolderLauncher.launch(null)
             },
             onSaveSettings = {
@@ -338,7 +350,7 @@ class MainActivity : ComponentActivity() {
                 showProfileDialog = false
             },
             onPickNewProfileTargetFolder = {
-                folderPickMode = FolderPickMode.NewProfile
+                folderPickMode = FolderPickMode.NewProfileDataFolder
                 pickTargetFolderLauncher.launch(null)
             },
             onDeleteProfile = { profileId ->
@@ -456,6 +468,16 @@ class MainActivity : ComponentActivity() {
                 logText + "\n" + line
             }
         }
+    }
+    private fun appendDeploymentResultBlock(
+        title: String,
+        result: com.shonkware.droidmodloader.engine.deploy.DeploymentResult
+    ) {
+        appendLog("$title:")
+        appendLog("  Adds: ${result.addCount}")
+        appendLog("  Removes: ${result.removeCount}")
+        appendLog("  Updates: ${result.updateCount}")
+        appendLog("  Final file count: ${result.finalRecordCount}")
     }
     private fun timestampNow(): String {
         return SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
@@ -821,6 +843,7 @@ class MainActivity : ComponentActivity() {
             syncPluginsFromCurrentState(engine)
 
             appendLog("Installed imported mod: $installedMod")
+            appendInstalledModRoutingSummary(engine, installedMod)
             appendLog("Saved installed mod count after import: ${updatedMods.size}")
             appendLog("Plugins refreshed automatically.")
             appendLog("RESULT: PASS")
@@ -1005,7 +1028,7 @@ class MainActivity : ComponentActivity() {
                 .show()
         }
     }
-    private fun savePickedFolderToSelectedGameConfig(treeUri: String) {
+    private fun savePickedDataFolderToSelectedGameConfig(treeUri: String) {
         runOnUiThreadBlocking {
             selectedTreeUriText = treeUri
             realDeployEnabledState = true
@@ -1017,7 +1040,19 @@ class MainActivity : ComponentActivity() {
         ensureDataBaselineIfMissing("target folder selected")
         refreshDashboard()
 
-        appendLog("Saved picked folder URI for $selectedGameId")
+        appendLog("Saved picked Data folder URI for $selectedGameId")
+    }
+    private fun savePickedRootFolderToSelectedGameConfig(treeUri: String) {
+        runOnUiThreadBlocking {
+            selectedRootTreeUriText = treeUri
+            realDeployEnabledState = true
+        }
+
+        saveSelectedGameConfigFromUi()
+        saveActiveProfileFromDashboard()
+        refreshDashboard()
+
+        appendLog("Saved picked game root folder URI for $selectedGameId")
     }
     private fun togglePluginEnabled(normalizedPath: String) {
         val engine = createModEngineForWorkflows() ?: return
@@ -1182,6 +1217,25 @@ class MainActivity : ComponentActivity() {
             appendLog("Selected game: $selectedGameId")
             appendLog("Active config: $config")
             appendLog(engine.getDeploymentTargetDebugSummary(selectedGameId))
+            val rootRecordCount = engine.getCurrentRootWinningRecords().size
+            val rootTargetSelected =
+                config != null &&
+                        config.realDeployEnabled &&
+                        (
+                                !config.targetRootTreeUri.isNullOrBlank() ||
+                                        engine.validateTargetDataPath(config.targetRootPath)
+                                )
+
+            if (rootRecordCount > 0) {
+                appendLog("Root-scope deployable file count: $rootRecordCount")
+            }
+
+            if (rootRecordCount > 0 && config?.realDeployEnabled == true && !rootTargetSelected) {
+                appendLog(
+                    "WARNING: Root-scope files were detected, but no game root folder is selected. " +
+                            "Pick the game root folder to deploy files like SKSE/NVSE loaders, DLLs, ENB files, or other root-level files."
+                )
+            }
 
             val result = engine.deployForGame(selectedGameId)
 
@@ -1205,11 +1259,44 @@ class MainActivity : ComponentActivity() {
             }
 
             appendLog("Deploy mode: $effectiveMode")
-            appendLog("Deploy target: $effectiveTarget")
-            appendLog("Adds: ${result.addCount}")
-            appendLog("Removes: ${result.removeCount}")
-            appendLog("Updates: ${result.updateCount}")
-            appendLog("Final deployed file count: ${result.finalRecordCount}")
+            appendLog("Data deploy target: $effectiveTarget")
+
+            val rootTarget = when {
+                config != null &&
+                        config.realDeployEnabled &&
+                        !config.targetRootTreeUri.isNullOrBlank() -> {
+                    "TREE_URI:${config.targetRootTreeUri}"
+                }
+
+                config != null &&
+                        config.realDeployEnabled &&
+                        engine.validateTargetDataPath(config.targetRootPath) -> {
+                    config.targetRootPath
+                }
+
+                else -> {
+                    "Simulated game root"
+                }
+            }
+
+            appendLog("Game root deploy target: $rootTarget")
+
+            appendDeploymentResultBlock(
+                title = "Data deploy result",
+                result = result.dataResult
+            )
+
+            appendDeploymentResultBlock(
+                title = "Game root deploy result",
+                result = result.rootResult
+            )
+
+            appendLog("Combined deploy result:")
+            appendLog("  Adds: ${result.addCount}")
+            appendLog("  Removes: ${result.removeCount}")
+            appendLog("  Updates: ${result.updateCount}")
+            appendLog("  Final file count: ${result.finalRecordCount}")
+
             appendLog("RESULT: PASS")
 
             finishOperation("Deploy succeeded ($effectiveMode).")
@@ -1325,6 +1412,8 @@ class MainActivity : ComponentActivity() {
                 targetPathText = ""
                 realDeployEnabledState = false
                 selectedTreeUriText = "No folder selected"
+                rootTargetPathText = ""
+                selectedRootTreeUriText = "No root folder selected"
             }
             appendLog("No config found for gameId=$selectedGameId")
             return
@@ -1334,6 +1423,8 @@ class MainActivity : ComponentActivity() {
             targetPathText = config.targetDataPath
             realDeployEnabledState = config.realDeployEnabled
             selectedTreeUriText = config.targetTreeUri ?: "No folder selected"
+            rootTargetPathText = config.targetRootPath
+            selectedRootTreeUriText = config.targetRootTreeUri ?: "No root folder selected"
         }
 
         appendLog("Loaded config into Compose state: $config")
@@ -1347,13 +1438,18 @@ class MainActivity : ComponentActivity() {
         val selectedTreeUri = selectedTreeUriText
             .trim()
             .takeIf { it.isNotBlank() && it != "No folder selected" }
+        val selectedRootTreeUri = selectedRootTreeUriText
+            .trim()
+            .takeIf { it.isNotBlank() && it != "No root folder selected" }
 
         val updatedConfig = GameDeploymentConfig(
             gameId = selectedGameId,
             displayName = getGameDisplayName(selectedGameId),
             targetDataPath = targetPathText.trim(),
             realDeployEnabled = realDeployEnabledState,
-            targetTreeUri = selectedTreeUri
+            targetTreeUri = selectedTreeUri,
+            targetRootPath = rootTargetPathText.trim(),
+            targetRootTreeUri = selectedRootTreeUri
         )
 
         val index = existingConfigs.indexOfFirst { it.gameId == selectedGameId }
@@ -1503,12 +1599,16 @@ class MainActivity : ComponentActivity() {
                 selectedGameId = activeProfile.gameId
                 targetPathText = activeProfile.targetDataPath
                 selectedTreeUriText = activeProfile.targetTreeUri ?: "No folder selected"
+                rootTargetPathText = activeProfile.targetRootPath
+                selectedRootTreeUriText = activeProfile.targetRootTreeUri ?: "No root folder selected"
                 realDeployEnabledState = activeProfile.realDeployEnabled
             } else {
                 activeProfileName = "No profile"
                 selectedGameId = "skyrim_le"
                 targetPathText = ""
                 selectedTreeUriText = "No folder selected"
+                rootTargetPathText = ""
+                selectedRootTreeUriText = "No root folder selected"
                 realDeployEnabledState = false
             }
         }
@@ -1530,6 +1630,8 @@ class MainActivity : ComponentActivity() {
             gameDisplayName = getGameDisplayName(setupGameId),
             targetDataPath = "",
             targetTreeUri = null,
+            targetRootPath = "",
+            targetRootTreeUri = null,
             realDeployEnabled = setupRealDeployEnabled,
             iniPresetId = null
         )
@@ -1552,8 +1654,8 @@ class MainActivity : ComponentActivity() {
             profileOptions = existingProfiles
 
             selectedGameId = profile.gameId
-            targetPathText = profile.targetDataPath
-            selectedTreeUriText = profile.targetTreeUri ?: "No folder selected"
+            rootTargetPathText = profile.targetRootPath
+            selectedRootTreeUriText = profile.targetRootTreeUri ?: "No root folder selected"
             realDeployEnabledState = profile.realDeployEnabled
         }
 
@@ -1579,6 +1681,8 @@ class MainActivity : ComponentActivity() {
             gameId = newProfileGameId,
             gameDisplayName = getGameDisplayName(newProfileGameId),
             targetDataPath = "",
+            targetRootPath = "",
+            targetRootTreeUri = null,
             targetTreeUri = if (newProfileTreeUriText == "No folder selected") null else newProfileTreeUriText,
             realDeployEnabled = newProfileRealDeployEnabled,
             iniPresetId = null
@@ -1629,6 +1733,8 @@ class MainActivity : ComponentActivity() {
             selectedGameId = profile.gameId
             targetPathText = profile.targetDataPath
             selectedTreeUriText = profile.targetTreeUri ?: "No folder selected"
+            rootTargetPathText = profile.targetRootPath
+            selectedRootTreeUriText = profile.targetRootTreeUri ?: "No root folder selected"
             realDeployEnabledState = profile.realDeployEnabled
         }
 
@@ -1668,6 +1774,8 @@ class MainActivity : ComponentActivity() {
             gameDisplayName = getGameDisplayName(selectedGameId),
             targetDataPath = targetPathText.trim(),
             targetTreeUri = if (selectedTreeUriText == "No folder selected") null else selectedTreeUriText,
+            targetRootPath = rootTargetPathText.trim(),
+            targetRootTreeUri = if (selectedRootTreeUriText == "No root folder selected") null else selectedRootTreeUriText,
             realDeployEnabled = realDeployEnabledState
         )
 
@@ -1719,11 +1827,15 @@ class MainActivity : ComponentActivity() {
                 selectedGameId = newActiveProfile.gameId
                 targetPathText = newActiveProfile.targetDataPath
                 selectedTreeUriText = newActiveProfile.targetTreeUri ?: "No folder selected"
+                rootTargetPathText = newActiveProfile.targetRootPath
+                selectedRootTreeUriText = newActiveProfile.targetRootTreeUri ?: "No root folder selected"
                 realDeployEnabledState = newActiveProfile.realDeployEnabled
             } else {
                 selectedGameId = "skyrim_le"
                 targetPathText = ""
                 selectedTreeUriText = "No folder selected"
+                rootTargetPathText = ""
+                selectedRootTreeUriText = "No root folder selected"
                 realDeployEnabledState = false
                 showProfileDialog = false
             }
@@ -1794,6 +1906,7 @@ class MainActivity : ComponentActivity() {
 
             appendLog("Installed selected options for: ${prepared.archiveName}")
             appendLog("Installed mod: $installedMod")
+            appendInstalledModRoutingSummary(engine, installedMod)
             appendLog("RESULT: PASS")
 
             finishOperation("Archive imported successfully.")
@@ -1965,6 +2078,31 @@ class MainActivity : ComponentActivity() {
         }
 
         latch.await()
+    }
+
+    private fun appendInstalledModRoutingSummary(
+        engine: ModEngine,
+        mod: Mod
+    ) {
+        try {
+            val index = engine.indexModContent(mod)
+
+            appendLog("Installed mod routing summary for ${mod.name}:")
+            appendLog("  Data files: ${index.dataFiles.size}")
+            appendLog("  Game root files: ${index.gameRootFiles.size}")
+            appendLog("  Manager-only files: ${index.managerOnlyFiles.size}")
+            appendLog("  Unknown files: ${index.unknownFiles.size}")
+
+            index.gameRootFiles.take(10).forEach { entry ->
+                appendLog("  ROOT: ${entry.normalizedPath}")
+            }
+
+            index.dataFiles.take(10).forEach { entry ->
+                appendLog("  DATA: ${entry.normalizedPath}")
+            }
+        } catch (e: Exception) {
+            appendError("Failed to build installed mod routing summary: ${e.message}", e)
+        }
     }
 
 }

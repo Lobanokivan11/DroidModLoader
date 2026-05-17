@@ -1,5 +1,7 @@
 package com.shonkware.droidmodloader.engine.index
 
+import com.shonkware.droidmodloader.engine.model.DeployScope
+
 data class ModContentIndex(
     val modId: String,
     val modName: String,
@@ -7,6 +9,26 @@ data class ModContentIndex(
 ) {
     val deployableFiles: List<ModContentEntry>
         get() = entries.filter { it.isDeployable }
+
+    val dataFiles: List<ModContentEntry>
+        get() = entries.filter {
+            it.isDeployable && it.deployScope == DeployScope.DATA
+        }
+
+    val gameRootFiles: List<ModContentEntry>
+        get() = entries.filter {
+            it.isDeployable && it.deployScope == DeployScope.GAME_ROOT
+        }
+
+    val managerOnlyFiles: List<ModContentEntry>
+        get() = entries.filter {
+            it.deployScope == DeployScope.MANAGER_ONLY
+        }
+
+    val profileOnlyFiles: List<ModContentEntry>
+        get() = entries.filter {
+            it.deployScope == DeployScope.PROFILE_ONLY
+        }
 
     val plugins: List<ModContentEntry>
         get() = entries.filter { it.category == ModContentCategory.PLUGIN }
@@ -31,4 +53,7 @@ data class ModContentIndex(
 
     val unknownFiles: List<ModContentEntry>
         get() = entries.filter { it.category == ModContentCategory.UNKNOWN }
+
+    val hasGameRootFiles: Boolean
+        get() = gameRootFiles.isNotEmpty()
 }

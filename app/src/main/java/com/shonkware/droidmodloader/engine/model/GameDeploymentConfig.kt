@@ -5,5 +5,7 @@ data class GameDeploymentConfig(
     val displayName: String,
     val targetDataPath: String,
     val realDeployEnabled: Boolean,
-    val targetTreeUri: String?
+    val targetTreeUri: String?,
+    val targetRootPath: String = "",
+    val targetRootTreeUri: String? = null
 )

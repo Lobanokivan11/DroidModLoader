@@ -46,6 +46,8 @@ import java.security.MessageDigest
 import com.shonkware.droidmodloader.engine.plugins.ManagedPluginScanner
 import com.shonkware.droidmodloader.engine.index.ModFileIndexRepository
 import com.shonkware.droidmodloader.engine.index.ModFileIndexService
+import com.shonkware.droidmodloader.engine.deploy.ScopedDeploymentResult
+
 
 data class UninstallResult(
     val removed: Boolean,
@@ -132,6 +134,16 @@ class ModEngine(
     }
 
     fun resolve(mods: List<Mod>): List<FileRecord> {
+        return resolveForScopes(
+            mods = mods,
+            deployScopes = setOf(DeployScope.DATA)
+        )
+    }
+
+    private fun resolveForScopes(
+        mods: List<Mod>,
+        deployScopes: Set<DeployScope>
+    ): List<FileRecord> {
         val enabledMods = mods
             .filter { it.enabled }
             .sortedBy { it.priority }
@@ -141,7 +153,9 @@ class ModEngine(
         }
 
         val modFiles = scanMods(enabledMods)
-        val deployableModFiles = filterDeployableModFiles(modFiles)
+        val deployableModFiles = modFiles.filter { modFile ->
+            deployFileClassifier.classify(modFile.normalizedPath) in deployScopes
+        }
 
         return resolver.resolve(enabledMods, deployableModFiles)
     }
@@ -392,14 +406,27 @@ class ModEngine(
     fun filterDeployableModFiles(modFiles: List<ModFile>): List<ModFile> {
         return modFiles.filter {
             val scope = deployFileClassifier.classify(it.normalizedPath)
-            deployFileClassifier.isDeployableToCurrentStaging(scope)
+            deployFileClassifier.isDeployable(scope)
         }
     }
 
-    fun getCurrentWinningRecords(): List<FileRecord> {
-        return resolve(getEnabledCurrentMods())
+    fun getCurrentDataWinningRecords(): List<FileRecord> {
+        return resolveForScopes(
+            mods = getEnabledCurrentMods(),
+            deployScopes = setOf(DeployScope.DATA)
+        )
     }
 
+    fun getCurrentRootWinningRecords(): List<FileRecord> {
+        return resolveForScopes(
+            mods = getEnabledCurrentMods(),
+            deployScopes = setOf(DeployScope.GAME_ROOT)
+        )
+    }
+
+    fun getCurrentWinningRecords(): List<FileRecord> {
+        return getCurrentDataWinningRecords()
+    }
     fun saveGameDeploymentConfigs(configs: List<GameDeploymentConfig>) {
         gameDeploymentConfigRepository.save(configs)
     }
@@ -423,50 +450,126 @@ class ModEngine(
 
         return target.exists() || target.parentFile?.exists() == true
     }
-    fun deployForGame(gameId: String): DeploymentResult {
+    fun deployForGame(gameId: String): ScopedDeploymentResult {
         val config = getGameDeploymentConfig(gameId)
 
-        val effectiveManifestFile = getEffectiveDeploymentManifestFile(gameId)
-        val effectiveManifestRepository = DeploymentManifestRepository(effectiveManifestFile)
-        val oldManifest = effectiveManifestRepository.load()
-        val newWinningRecords = getCurrentWinningRecords()
+        val dataManifestRepository = DeploymentManifestRepository(
+            getEffectiveDeploymentManifestFile(gameId)
+        )
 
-        val usingTreeUri =
-            config != null &&
-                    config.realDeployEnabled &&
-                    !config.targetTreeUri.isNullOrBlank()
+        val oldDataManifest = dataManifestRepository.load()
+        val dataWinningRecords = getCurrentDataWinningRecords()
 
-        val (newManifest, result) = if (usingTreeUri) {
-            val treeUri = Uri.parse(config!!.targetTreeUri)
-            val treeDeploymentManager = TreeUriDeploymentManager(
-                context = appContext,
-                contentResolver = appContext.contentResolver,
-                treeUri = treeUri
+        val (newDataManifest, dataResult) = deployRecordsToConfiguredTarget(
+            oldManifest = oldDataManifest,
+            newWinningRecords = dataWinningRecords,
+            realDeployEnabled = config?.realDeployEnabled == true,
+            targetTreeUri = config?.targetTreeUri,
+            targetPath = config?.targetDataPath ?: "",
+            fallbackRootDir = deployRootDir
+        )
+
+        dataManifestRepository.save(newDataManifest)
+
+        val rootManifestRepository = DeploymentManifestRepository(
+            getEffectiveRootDeploymentManifestFile(gameId)
+        )
+
+        val oldRootManifest = rootManifestRepository.load()
+        val rootWinningRecords = getCurrentRootWinningRecords()
+
+        val canDeployRoot = canDeployGameRoot(config)
+
+        val rootResult = if (canDeployRoot && (rootWinningRecords.isNotEmpty() || oldRootManifest.isNotEmpty())) {
+            val (newRootManifest, result) = deployRecordsToConfiguredTarget(
+                oldManifest = oldRootManifest,
+                newWinningRecords = rootWinningRecords,
+                realDeployEnabled = config?.realDeployEnabled == true,
+                targetTreeUri = config?.targetRootTreeUri,
+                targetPath = config?.targetRootPath ?: "",
+                fallbackRootDir = getSimulatedGameRootDir()
             )
-            treeDeploymentManager.deploy(oldManifest, newWinningRecords)
-        } else {
-            val effectiveDeployRoot = if (
-                config != null &&
-                config.realDeployEnabled &&
-                validateTargetDataPath(config.targetDataPath)
-            ) {
-                File(config.targetDataPath)
-            } else {
-                deployRootDir
-            }
 
-            val effectiveDeploymentManager = DeploymentManager(effectiveDeployRoot)
-            effectiveDeploymentManager.deploy(oldManifest, newWinningRecords)
+            rootManifestRepository.save(newRootManifest)
+            result
+        } else {
+            DeploymentResult(
+                addCount = 0,
+                removeCount = 0,
+                updateCount = 0,
+                finalRecordCount = 0
+            )
         }
 
-        effectiveManifestRepository.save(newManifest)
-        return result
+        return ScopedDeploymentResult(
+            dataResult = dataResult,
+            rootResult = rootResult
+        )
+    }
+
+    private fun deployRecordsToConfiguredTarget(
+        oldManifest: List<com.shonkware.droidmodloader.engine.model.DeploymentRecord>,
+        newWinningRecords: List<FileRecord>,
+        realDeployEnabled: Boolean,
+        targetTreeUri: String?,
+        targetPath: String,
+        fallbackRootDir: File
+    ): Pair<List<com.shonkware.droidmodloader.engine.model.DeploymentRecord>, DeploymentResult> {
+        return when {
+            realDeployEnabled && !targetTreeUri.isNullOrBlank() -> {
+                val treeDeploymentManager = TreeUriDeploymentManager(
+                    context = appContext,
+                    contentResolver = appContext.contentResolver,
+                    treeUri = Uri.parse(targetTreeUri)
+                )
+
+                treeDeploymentManager.deploy(oldManifest, newWinningRecords)
+            }
+
+            realDeployEnabled && validateTargetDataPath(targetPath) -> {
+                val deploymentManager = DeploymentManager(File(targetPath))
+                deploymentManager.deploy(oldManifest, newWinningRecords)
+            }
+
+            else -> {
+                val deploymentManager = DeploymentManager(fallbackRootDir)
+                deploymentManager.deploy(oldManifest, newWinningRecords)
+            }
+        }
+    }
+
+    private fun canDeployGameRoot(config: GameDeploymentConfig?): Boolean {
+        if (config == null) return true
+
+        if (!config.realDeployEnabled) {
+            return true
+        }
+
+        return !config.targetRootTreeUri.isNullOrBlank() ||
+                validateTargetDataPath(config.targetRootPath)
+    }
+
+    private fun getSimulatedGameRootDir(): File {
+        return File(
+            deployRootDir.parentFile ?: deployRootDir,
+            "GameRoot"
+        )
     }
 
     private fun getEffectiveDeploymentManifestFile(gameId: String): File {
         return File(
             deploymentManifestFile.parentFile,
             buildTargetScopedFileName("deployment_manifest", gameId)
+        )
+    }
+
+    private fun getEffectiveRootDeploymentManifestFile(gameId: String): File {
+        return File(
+            deploymentManifestFile.parentFile,
+            buildTargetScopedFileNameForIdentity(
+                prefix = "deployment_manifest_root",
+                identity = getRootDeploymentTargetIdentity(gameId)
+            )
         )
     }
 
@@ -616,10 +719,10 @@ class ModEngine(
     fun cancelPreparedArchiveInstall(prepared: PreparedArchiveInstall) {
         preparedArchiveInstaller.cancel(prepared)
     }
-
     fun buildModFilePreview(mod: Mod): ModFilePreview {
         val index = indexModContent(mod)
-        val winningRecords = getCurrentWinningRecords()
+
+        val winningRecords = getCurrentDataWinningRecords() + getCurrentRootWinningRecords()
         val winningByPath = winningRecords.associateBy { it.normalizedPath }
 
         val entries = index.entries.map { entry ->
@@ -652,9 +755,12 @@ class ModEngine(
                 originalPath = entry.originalPath,
                 status = status,
                 reason = entry.reason,
+                deployScope = entry.deployScope,
+                isDeployable = entry.isDeployable,
                 winningModName = winner?.winningModName
             )
         }
+
         val sortedEntries = entries.sortedBy { it.normalizedPath }
 
         return ModFilePreview(
@@ -857,6 +963,13 @@ class ModEngine(
             val optionalCount = groupEntries.count { it.status == ModFilePreviewStatus.OPTIONAL }
             val ignoredCount = groupEntries.count { it.status == ModFilePreviewStatus.IGNORED }
             val unknownCount = groupEntries.count { it.status == ModFilePreviewStatus.UNKNOWN }
+            val dataFileCount = groupEntries.count {
+                it.isDeployable && it.deployScope == DeployScope.DATA
+            }
+
+            val gameRootFileCount = groupEntries.count {
+                it.isDeployable && it.deployScope == DeployScope.GAME_ROOT
+            }
 
             val dominantStatus = when {
                 overwrittenCount > 0 -> ModFilePreviewStatus.OVERWRITTEN
@@ -877,6 +990,8 @@ class ModEngine(
                 normalizedPath = topLevelPath.removeSuffix("/"),
                 isTopLevelFile = !topLevelPath.endsWith("/"),
                 totalCount = groupEntries.size,
+                dataFileCount = dataFileCount,
+                gameRootFileCount = gameRootFileCount,
                 winningCount = winningCount,
                 overwrittenCount = overwrittenCount,
                 notDeployedCount = notDeployedCount,
@@ -1150,22 +1265,72 @@ class ModEngine(
         gameId: String,
         extension: String = "json"
     ): String {
-        val identity = getDeploymentTargetIdentity(gameId)
-        val hash = hashManifestKey(identity.stableKey())
+        return buildTargetScopedFileNameForIdentity(
+            prefix = prefix,
+            identity = getDeploymentTargetIdentity(gameId),
+            extension = extension
+        )
+    }
 
+    private fun buildTargetScopedFileNameForIdentity(
+        prefix: String,
+        identity: DeploymentTargetIdentity,
+        extension: String = "json"
+    ): String {
+        val hash = hashManifestKey(identity.stableKey())
         return "${prefix}_${identity.gameId}_${identity.mode}_$hash.$extension"
+    }
+
+    private fun getRootDeploymentTargetIdentity(gameId: String): DeploymentTargetIdentity {
+        val config = getGameDeploymentConfig(gameId)
+
+        return when {
+            config != null &&
+                    config.realDeployEnabled &&
+                    !config.targetRootTreeUri.isNullOrBlank() -> {
+                DeploymentTargetIdentity(
+                    gameId = gameId,
+                    mode = "root_tree_uri",
+                    target = config.targetRootTreeUri ?: ""
+                )
+            }
+
+            config != null &&
+                    config.realDeployEnabled &&
+                    validateTargetDataPath(config.targetRootPath) -> {
+                DeploymentTargetIdentity(
+                    gameId = gameId,
+                    mode = "root_real_path",
+                    target = config.targetRootPath
+                )
+            }
+
+            else -> {
+                DeploymentTargetIdentity(
+                    gameId = gameId,
+                    mode = "root_simulated",
+                    target = getSimulatedGameRootDir().absolutePath
+                )
+            }
+        }
     }
 
     fun getDeploymentTargetDebugSummary(gameId: String): String {
         val identity = getDeploymentTargetIdentity(gameId)
         val manifestName = buildTargetScopedFileName("deployment_manifest", gameId)
+        val rootManifestName = buildTargetScopedFileNameForIdentity(
+            prefix = "deployment_manifest_root",
+            identity = getRootDeploymentTargetIdentity(gameId)
+        )
         val baselineName = buildTargetScopedFileName("data_baseline", gameId)
+
 
         return buildString {
             appendLine("Deployment target identity:")
             appendLine(identity.displaySummary())
             appendLine("Manifest file: $manifestName")
             appendLine("Baseline file: $baselineName")
+            appendLine("Root manifest file: $rootManifestName")
         }
     }
 

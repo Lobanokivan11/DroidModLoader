@@ -17,6 +17,8 @@ class GameDeploymentConfigRepository(
             obj.put("gameId", config.gameId)
             obj.put("displayName", config.displayName)
             obj.put("targetDataPath", config.targetDataPath)
+            obj.put("targetRootPath", config.targetRootPath)
+            obj.put("targetRootTreeUri", config.targetRootTreeUri)
             obj.put("realDeployEnabled", config.realDeployEnabled)
             obj.put("targetTreeUri", config.targetTreeUri)
             array.put(obj)
@@ -43,7 +45,9 @@ class GameDeploymentConfigRepository(
                     displayName = obj.optString("displayName", ""),
                     targetDataPath = obj.optString("targetDataPath", ""),
                     realDeployEnabled = obj.optBoolean("realDeployEnabled", false),
-                    targetTreeUri = if (obj.isNull("targetTreeUri")) null else obj.optString("targetTreeUri", null)
+                    targetTreeUri = if (obj.isNull("targetTreeUri")) null else obj.optString("targetTreeUri", null),
+                    targetRootPath = obj.optString("targetRootPath", ""),
+                    targetRootTreeUri = if (obj.isNull("targetRootTreeUri")) null else obj.optString("targetRootTreeUri", null)
                 )
             )
         }

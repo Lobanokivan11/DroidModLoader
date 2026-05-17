@@ -274,9 +274,16 @@ fun CompactModRow(
 
                     if (contentIndex != null) {
                         Text(
-                            text = "Files ${contentIndex.deployableFiles.size} | Plugins ${contentIndex.plugins.size} | Optional ${contentIndex.optionalModules.size}",
+                            text = "Data ${contentIndex.dataFiles.size} | Root ${contentIndex.gameRootFiles.size} | Plugins ${contentIndex.plugins.size} | Optional ${contentIndex.optionalModules.size}",
                             style = MaterialTheme.typography.bodySmall
                         )
+
+                        if (contentIndex.hasGameRootFiles) {
+                            Text(
+                                text = "Contains Game Root files. Pick Game Root Folder before deploying SKSE/NVSE/ENB-style mods.",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                        }
                     }
 
                     if (
@@ -350,6 +357,8 @@ fun ModContentSummary(
         Text("Content Index", fontWeight = FontWeight.Bold)
 
         Text("Deployable files: ${contentIndex.deployableFiles.size}")
+        Text("Data-scope files: ${contentIndex.dataFiles.size}")
+        Text("Game root files: ${contentIndex.gameRootFiles.size}")
         Text("Plugins: ${contentIndex.plugins.size}")
         Text("Archives: ${contentIndex.archives.size}")
         Text("Config files: ${contentIndex.configs.size}")
@@ -385,6 +394,17 @@ fun ModContentSummary(
             Spacer(Modifier.height(4.dp))
             Text("Config files:", fontWeight = FontWeight.Bold)
             contentIndex.configs.take(5).forEach {
+                Text(
+                    text = it.normalizedPath,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+
+        if (contentIndex.gameRootFiles.isNotEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            Text("Game Root files:", fontWeight = FontWeight.Bold)
+            contentIndex.gameRootFiles.take(8).forEach {
                 Text(
                     text = it.normalizedPath,
                     style = MaterialTheme.typography.bodySmall
@@ -531,10 +551,12 @@ fun PluginRow(
 @Composable
 fun DeploymentSettingsCard(
     selectedTreeUriText: String,
+    selectedRootTreeUriText: String,
     realDeployEnabled: Boolean,
     secondScreenEnabled: Boolean,
     onRealDeployChanged: (Boolean) -> Unit,
     onPickTargetFolder: () -> Unit,
+    onPickRootTargetFolder: () -> Unit,
     onSaveSettings: () -> Unit,
     onToggleSecondScreen: () -> Unit
 ) {
@@ -571,6 +593,22 @@ fun DeploymentSettingsCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Pick Target Folder")
+            }
+            Text(
+                text = "Game root folder: $selectedRootTreeUriText",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Text(
+                text = "Advanced: pick the main game folder, not Data. Needed for SKSE/NVSE/OBSE/FOSE/F4SE loaders, DLLs, ENB files, and other root-level files.",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Button(
+                onClick = onPickRootTargetFolder,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Pick Game Root Folder")
             }
 
             Button(
@@ -970,9 +1008,18 @@ fun ModFilePreviewDialog(
 
                 Text("Winning/deployed: ${preview.winningFiles.size}")
                 Text("Overwritten: ${preview.overwrittenFiles.size}")
+                Text("Data-scope files: ${preview.dataFiles.size}")
+                Text("Game root files: ${preview.gameRootFiles.size}")
                 Text("Plugins: ${preview.pluginFiles.size}")
                 Text("Archives: ${preview.archiveFiles.size}")
                 Text("Configs: ${preview.configFiles.size}")
+
+                if (preview.gameRootFiles.isNotEmpty()) {
+                    Text(
+                        text = "This mod contains Game Root files. These deploy to the selected Game Root Folder, not the Data folder.",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
 
                 if (preview.folderSummaries.isEmpty()) {
                     Text("No files found.")
@@ -1103,6 +1150,8 @@ fun FolderSummaryRow(
                 text = buildString {
                     append("Total: ${summary.totalCount}")
 
+                    if (summary.dataFileCount > 0) append(" | Data: ${summary.dataFileCount}")
+                    if (summary.gameRootFileCount > 0) append(" | Root: ${summary.gameRootFileCount}")
                     if (summary.winningCount > 0) append(" | Winning: ${summary.winningCount}")
                     if (summary.overwrittenCount > 0) append(" | Overwritten: ${summary.overwrittenCount}")
                     if (summary.notDeployedCount > 0) append(" | Not deployed: ${summary.notDeployedCount}")

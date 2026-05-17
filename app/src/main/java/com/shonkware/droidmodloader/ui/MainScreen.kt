@@ -30,6 +30,7 @@ data class DashboardUiState(
     val gameOptions: List<String>,
     val selectedGameId: String,
     val selectedTreeUriText: String,
+    val selectedRootTreeUriText: String,
     val realDeployEnabled: Boolean,
     val logText: String,
     val setupComplete: Boolean,
@@ -79,6 +80,7 @@ data class DashboardActions(
     val onSelectGame: (String) -> Unit,
     val onRealDeployChanged: (Boolean) -> Unit,
     val onPickTargetFolder: () -> Unit,
+    val onPickRootTargetFolder: () -> Unit,
     val onSaveSettings: () -> Unit,
     val onShareLogs: () -> Unit,
 
@@ -119,7 +121,6 @@ data class DashboardActions(
 
     val onOpenOverwriteFolder: () -> Unit,
     val onCloseOverwriteFolder: () -> Unit,
-
 )
 
 @Composable
@@ -180,10 +181,12 @@ private fun MainDashboardScreen(
 
             DeploymentSettingsCard(
                 selectedTreeUriText = state.selectedTreeUriText,
+                selectedRootTreeUriText = state.selectedRootTreeUriText,
                 realDeployEnabled = state.realDeployEnabled,
                 secondScreenEnabled = state.secondScreenEnabled,
                 onRealDeployChanged = actions.onRealDeployChanged,
                 onPickTargetFolder = actions.onPickTargetFolder,
+                onPickRootTargetFolder = actions.onPickRootTargetFolder,
                 onSaveSettings = actions.onSaveSettings,
                 onToggleSecondScreen = actions.onToggleSecondScreen,
             )
@@ -205,37 +208,6 @@ fun DroidModLoaderScreen(
     state: DashboardUiState,
     actions: DashboardActions
 ) {
-    MainDashboardScreen(
-        state = state,
-        actions = actions
-    )
-    if (state.fullscreenPanel == FullscreenPanel.MODS) {
-        ModsPanelDialog(
-            mods = state.mods,
-            modContentIndexes = state.modContentIndexes,
-            onToggleMod = actions.onToggleMod,
-            onMoveModUp = actions.onMoveModUp,
-            onMoveModDown = actions.onMoveModDown,
-            onDeleteMod = actions.onDeleteMod,
-            onViewModFiles = actions.onViewModFiles,
-            onApplyModOrder = actions.onApplyModOrder,
-            onOpenOverwriteFolder = actions.onOpenOverwriteFolder,
-            onClose = actions.onCloseFullscreenPanel
-        )
-    }
-
-    if (state.fullscreenPanel == FullscreenPanel.PLUGINS) {
-        PluginsPanelDialog(
-            plugins = state.plugins,
-            onTogglePlugin = actions.onTogglePlugin,
-            onMovePluginUp = actions.onMovePluginUp,
-            onMovePluginDown = actions.onMovePluginDown,
-            onApplyPluginOrder = actions.onApplyPluginOrder,
-            onClose = actions.onCloseFullscreenPanel
-        )
-    }
-
-
     if (!state.setupComplete) {
         SetupScreen(
             state = state,
@@ -295,8 +267,7 @@ fun DroidModLoaderScreen(
             onNewProfileRealDeployChanged = actions.onNewProfileRealDeployChanged,
             onCreateAdditionalProfile = actions.onCreateAdditionalProfile,
             onClose = actions.onCloseProfileDialog,
-            gameOptions = state.gameOptions,
-
+            gameOptions = state.gameOptions
         )
     }
 
@@ -327,109 +298,6 @@ fun DroidModLoaderScreen(
             baselineExists = state.overwriteBaselineExists,
             message = state.overwriteMessage,
             onClose = actions.onCloseOverwriteFolder
-        )
-    }
-
-    Scaffold { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            HeaderCard(
-                appName = state.appName,
-                versionLabel = state.versionLabel,
-                onVersionTap = actions.onVersionTap
-            )
-            StatusCard(
-                activeProfileName = state.activeProfileName,
-                lastOperationStatus = state.lastOperationStatus,
-                summaryText = state.summaryText,
-                onOpenProfileDialog = actions.onOpenProfileDialog
-            )
-            QuickStartCard()
-            MainActionsCard(
-                operationInProgress = state.operationInProgress,
-                onImportArchive = actions.onImportArchive,
-                onDeployMods = actions.onDeployMods,
-                onWriteLoadOrderFiles = actions.onWriteLoadOrderFiles
-            )
-            ModsCard(
-                mods = state.mods,
-                modContentIndexes = state.modContentIndexes,
-                onToggleMod = actions.onToggleMod,
-                onMoveModUp = actions.onMoveModUp,
-                onMoveModDown = actions.onMoveModDown,
-                onDeleteMod = actions.onDeleteMod,
-                onViewModFiles = actions.onViewModFiles,
-                onOpenFullscreen = actions.onOpenModsFullscreen,
-                onOpenOverwriteFolder = actions.onOpenOverwriteFolder
-            )
-            PluginsCard(
-                plugins = state.plugins,
-                onTogglePlugin = actions.onTogglePlugin,
-                onMovePluginUp = actions.onMovePluginUp,
-                onMovePluginDown = actions.onMovePluginDown,
-                onOpenFullscreen = actions.onOpenPluginsFullscreen,
-            )
-            DeploymentSettingsCard(
-                selectedTreeUriText = state.selectedTreeUriText,
-                realDeployEnabled = state.realDeployEnabled,
-                secondScreenEnabled = state.secondScreenEnabled,
-                onRealDeployChanged = actions.onRealDeployChanged,
-                onPickTargetFolder = actions.onPickTargetFolder,
-                onSaveSettings = actions.onSaveSettings,
-                onToggleSecondScreen = actions.onToggleSecondScreen,
-
-            )
-            ReportCard(
-                logText = state.logText,
-                onShareLogs = actions.onShareLogs
-            )
-            if (state.developerModeEnabled) {
-                DeveloperToolsCard()
-            }
-        }
-    }
-    if (state.showProfileDialog) {
-        ProfileManagerDialog(
-            profiles = state.profileOptions,
-            activeProfileId = state.activeProfileId,
-            gameOptions = state.gameOptions,
-            newProfileNameText = state.newProfileNameText,
-            newProfileGameId = state.newProfileGameId,
-            newProfileTreeUriText = state.newProfileTreeUriText,
-            newProfileRealDeployEnabled = state.newProfileRealDeployEnabled,
-            onSelectProfile = actions.onSelectProfile,
-            onDeleteProfile = actions.onDeleteProfile,
-            onNewProfileNameChanged = actions.onNewProfileNameChanged,
-            onNewProfileGameChanged = actions.onNewProfileGameChanged,
-            onPickNewProfileTargetFolder = actions.onPickNewProfileTargetFolder,
-            onNewProfileRealDeployChanged = actions.onNewProfileRealDeployChanged,
-            onCreateAdditionalProfile = actions.onCreateAdditionalProfile,
-            onClose = actions.onCloseProfileDialog
-        )
-    }
-    if (state.showInstallerDialog && state.pendingArchiveInstall != null) {
-        InstallerChoiceDialog(
-            prepared = state.pendingArchiveInstall,
-            selectedOptionIds = state.selectedInstallerOptionIds,
-            fullscreen = state.installerDialogFullscreen,
-            onToggleOption = actions.onToggleInstallerOption,
-            onConfirm = actions.onConfirmInstaller,
-            onCancel = actions.onCancelInstaller,
-            onToggleFullscreen = actions.onToggleInstallerFullscreen
-        )
-    }
-    if (state.showModFilePreviewDialog && state.selectedModFilePreview != null) {
-        ModFilePreviewDialog(
-            preview = state.selectedModFilePreview,
-            fullscreen = state.modFilePreviewFullscreen,
-            onClose = actions.onCloseModFilePreview,
-            onToggleFullscreen = actions.onToggleModFilePreviewFullscreen
         )
     }
 }

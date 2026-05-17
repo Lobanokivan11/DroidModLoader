@@ -131,10 +131,10 @@ class PreparedArchiveInstaller(
         option: InstallerOption,
         finalDir: File
     ) {
-        val source = if (option.sourcePath == ".") {
+        val source = if (isCurrentDirectoryPath(option.sourcePath)) {
             installRoot
         } else {
-            safeResolve(installRoot, option.sourcePath)
+            safeResolveInstallerPath(installRoot, option.sourcePath)
         }
 
         if (!source.exists()) {
@@ -153,21 +153,17 @@ class PreparedArchiveInstaller(
         option: InstallerOption,
         finalDir: File
     ) {
-        val dataFolder = File(source, "Data")
-        val actualSource = if (dataFolder.exists() && dataFolder.isDirectory) {
-            dataFolder
-        } else {
-            source
-        }
-
-        val destinationRoot = if (option.destinationPath.isBlank()) {
+        val destinationRoot = if (isCurrentDirectoryPath(option.destinationPath)) {
             finalDir
         } else {
-            safeResolve(finalDir, option.destinationPath)
+            safeResolveInstallerPath(finalDir, option.destinationPath)
         }
 
         destinationRoot.mkdirs()
-        actualSource.copyRecursively(destinationRoot, overwrite = true)
+
+        // Important: copy the selected folder as-is.
+        // Do NOT auto-collapse Data/ here, or mixed root/Data mods like SKSE lose root files.
+        source.copyRecursively(destinationRoot, overwrite = true)
     }
 
     private fun copyFileOption(
@@ -175,10 +171,10 @@ class PreparedArchiveInstaller(
         option: InstallerOption,
         finalDir: File
     ) {
-        val destination = if (option.destinationPath.isBlank()) {
+        val destination = if (isCurrentDirectoryPath(option.destinationPath)) {
             File(finalDir, source.name)
         } else {
-            val rawDestination = safeResolve(finalDir, option.destinationPath)
+            val rawDestination = safeResolveInstallerPath(finalDir, option.destinationPath)
 
             if (option.destinationPath.endsWith("/") || option.destinationPath.endsWith("\\")) {
                 File(rawDestination, source.name)
@@ -191,7 +187,29 @@ class PreparedArchiveInstaller(
         source.copyTo(destination, overwrite = true)
     }
 
-    private fun safeResolve(root: File, relativePath: String): File {
-        return ArchiveEntryPath.safeResolve(root, relativePath)
+    private fun isCurrentDirectoryPath(path: String): Boolean {
+        val normalized = path
+            .replace("\\", "/")
+            .trim()
+            .trim('/')
+
+        return normalized.isBlank() || normalized == "."
+    }
+
+    private fun normalizeInstallerRelativePath(relativePath: String): String {
+        return when (val normalized = ArchiveEntryPath.normalize(relativePath)) {
+            ArchiveEntryPathResult.Ignore -> {
+                throw IOException("Installer path is empty or invalid: $relativePath")
+            }
+
+            is ArchiveEntryPathResult.Valid -> {
+                normalized.relativePath
+            }
+        }
+    }
+
+    private fun safeResolveInstallerPath(root: File, relativePath: String): File {
+        val normalizedPath = normalizeInstallerRelativePath(relativePath)
+        return ArchiveEntryPath.safeResolve(root, normalizedPath)
     }
 }

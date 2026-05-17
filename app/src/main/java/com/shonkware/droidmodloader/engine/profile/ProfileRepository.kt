@@ -26,6 +26,8 @@ class ProfileRepository(
                     gameDisplayName = obj.getString("gameDisplayName"),
                     targetDataPath = obj.optString("targetDataPath", ""),
                     targetTreeUri = obj.optString("targetTreeUri").ifBlank { null },
+                    targetRootPath = obj.optString("targetRootPath", ""),
+                    targetRootTreeUri = obj.optString("targetRootTreeUri").ifBlank { null },
                     realDeployEnabled = obj.optBoolean("realDeployEnabled", false),
                     iniPresetId = obj.optString("iniPresetId").ifBlank { null }
                 )
@@ -46,6 +48,8 @@ class ProfileRepository(
             obj.put("gameDisplayName", profile.gameDisplayName)
             obj.put("targetDataPath", profile.targetDataPath)
             obj.put("targetTreeUri", profile.targetTreeUri)
+            obj.put("targetRootPath", profile.targetRootPath)
+            obj.put("targetRootTreeUri", profile.targetRootTreeUri)
             obj.put("realDeployEnabled", profile.realDeployEnabled)
             obj.put("iniPresetId", profile.iniPresetId)
             array.put(obj)

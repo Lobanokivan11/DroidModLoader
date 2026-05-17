@@ -5,6 +5,8 @@ data class ModFileFolderSummary(
     val normalizedPath: String,
     val isTopLevelFile: Boolean,
     val totalCount: Int,
+    val dataFileCount: Int,
+    val gameRootFileCount: Int,
     val winningCount: Int,
     val overwrittenCount: Int,
     val notDeployedCount: Int,

@@ -2,9 +2,12 @@ package com.shonkware.droidmodloader.engine.index
 
 import com.shonkware.droidmodloader.engine.model.Mod
 import com.shonkware.droidmodloader.engine.util.PathUtils
+import com.shonkware.droidmodloader.engine.rules.DeployFileClassifier
 import java.io.File
 
 class ModContentIndexer {
+
+    private val deployFileClassifier = DeployFileClassifier()
 
     fun indexMod(mod: Mod): ModContentIndex {
         val root = File(mod.installPath)
@@ -53,6 +56,7 @@ class ModContentIndexer {
                 category = category,
                 reason = reason,
                 isDeployable = deployable,
+                deployScope = deployFileClassifier.classify(normalizedPath),
                 isOptionalCandidate = optional
             )
         }
