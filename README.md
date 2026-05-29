@@ -1,247 +1,338 @@
-# DroidModLoader
+# Droid Mod Loader
 
-DroidModLoader is an Android based mod manager for Bethesda games, designed for shared storage game installs and Windows container environments. The project is focused on making mobile modding more organized, easier, and more scalable for users who want a practical way to build and maintain modded game setups on Android.
+Droid Mod Loader is an Android app for managing Bethesda game mods.
 
-The primary development and testing target for this project is GameNative, which will be used to validate modlists, mod structure, deployment behavior, and compatibility in real world use.
+The simple version:
 
----
+You install mods into Droid Mod Loader.
+Droid Mod Loader keeps those mods organized.
+Then it prepares the right files so your game can use them.
 
-## Overview
+The app is being built for people who want to mod Bethesda games on Android while using Windows container apps like GameNative.
 
-Modding Bethesda games on Android currently involves a lot of manual file handling, trial and error, and limited visibility into what is actually happening inside a setup. Desktop mod managers solve many of these problems on PC, but equivalent tooling for Android and container based workflows is non-existant.
+Right now, Android Bethesda modding usually means copying files by hand, guessing where things go, and hoping the game still launches. Droid Mod Loader is meant to make that process safer, clearer, and easier to repeat.
 
-DroidModLoader is being built to fill that gap.
+## What this app does
 
-The goal is not just to extract archives, but to provide a structured mod management layer that helps users install mods cleanly, understand conflicts, manage profiles, and build stable foundations for long term modded playthroughs.
+Droid Mod Loader helps with things like:
 
----
+* Importing mod archives from your Android device
+* Keeping each installed mod in its own folder
+* Turning mods on and off
+* Keeping separate profiles for different setups
+* Scanning mod files so the app knows what each mod contains
+* Showing plugin files like `.esp`, `.esm`, and `.esl`
+* Writing plugin files such as `plugins.txt` and `loadorder.txt`
+* Preparing files for a shared game folder
+* Helping users understand conflicts and overwrites
+* Creating useful reports when something goes wrong
 
-## Project Goals
+The long term goal is to bring a Mod Organizer/Vortex style experience to Android, but built around how Android storage and Windows container apps actually work.
 
-DroidModLoader is being developed around a few core goals:
+## Why this exists
 
-- make large mod setups easier to manage on Android
-- support shared-storage game installs used with Windows container apps
-- reduce confusion around mod conflicts and file overwrites
-- improve visibility into installed files and mod structure
-- support reusable profiles and cleaner organization across game installs
-- provide a more realistic path to Bethesda modding on mobile hardware
+Bethesda games can be heavily modded on PC because there are strong tools like Mod Organizer 2, Vortex, xEdit, and LOOT.
 
----
+Android does not have the same kind of modding setup.
+
+If you are trying to play games like Skyrim or Fallout: New Vegas through a Windows container on Android, you often have to manage files yourself. That can get confusing fast.
+
+Droid Mod Loader exists to help with that.
+
+It is not just an archive extractor. The goal is to build a real Android mod manager that understands installed mods, profiles, conflicts, plugin order, deployment, and diagnostics.
+
+## Who this is for
+
+This project is mainly for:
+
+* people modding Bethesda games on Android
+* GameNative users
+* Android handheld users
+* people testing Windows game containers on ARM devices
+* Bethesda modders who want cleaner mobile tools
+* users who want less manual file copying
+
+You do not need to understand every technical term to use the app. The app should eventually explain what it is doing and why it matters.
+
+## Target games
+
+The project is focused on Bethesda style modding.
+
+Current and planned targets include:
+
+* Skyrim Legendary Edition
+* Fallout: New Vegas
+* Fallout 3
+* Oblivion
+* Skyrim Special Edition
+* Fallout 4
+
+Skyrim Legendary Edition and Fallout: New Vegas are the most important early targets.
+
+## GameNative support
+
+GameNative is the main test environment for this project.
+
+The goal is not to modify GameNative directly or depend on private GameNative files. Droid Mod Loader is being built to work with shared folders and exported files that GameNative can use.
+
+Droid Mod Loader should help users with:
+
+* picking the correct game folder
+* preparing the Data folder
+* handling optional game root files
+* exporting plugin order files
+* exporting config files later
+* creating reports that include GameNative setup notes
+* reducing the amount of guessing needed to get a modded game running
+
+In plain English:
+
+Droid Mod Loader prepares the modded game files.
+GameNative runs the Windows game.
+The two need to work together.
+
+## Important terms
+
+### Mod
+
+A mod is a fan made change for a game. It might add textures, weapons, quests, bug fixes, menus, scripts, or new gameplay features.
+
+### Mod manager
+
+A mod manager helps install, organize, enable, disable, and troubleshoot mods.
+
+### Data folder
+
+Bethesda games usually load most mods from a folder called `Data`.
+
+For example, a Skyrim mod might place files into:
+
+```text
+Data/textures
+Data/meshes
+Data/scripts
+Data/SkyUI.esp
+```
+
+Droid Mod Loader needs to know where the correct Data folder is so it can prepare files safely.
+
+### Game root folder
+
+Some mods need files outside the Data folder.
+
+Examples include script extenders like SKSE, NVSE, OBSE, or FOSE.
+
+These files often live beside the game executable instead of inside Data. Droid Mod Loader treats this as a more advanced action because putting files in the wrong root folder can cause problems.
+
+### Plugin
+
+A plugin is usually an `.esp`, `.esm`, or `.esl` file.
+
+Plugins tell Bethesda games about new records, quests, items, cells, scripts, and other changes.
+
+### Load order
+
+Load order is the order plugins load in.
+
+The order matters because one plugin can overwrite or depend on another. Bad load order can cause missing content, crashes, broken quests, or strange bugs.
+
+### Profile
+
+A profile is a separate mod setup.
+
+For example, you could have:
+
+* a clean testing profile
+* a Skyrim graphics profile
+* a Fallout: New Vegas stability profile
+* a Tale of Two Wastelands profile
+
+The goal is for each profile to stay separate so one setup does not leak into another.
+
+## Current project status
+
+Droid Mod Loader is in beta development.
+
+Some parts work now. Some parts are still experimental. Some parts are planned but not finished yet.
+
+Current focus areas include:
+
+* safer file deployment
+* better profile isolation
+* better recovery tools
+* better diagnostics
+* better plugin handling
+* better installer support
+* GameNative focused testing
+
+This is still early software. Back up important game folders before testing.
+
+## What works now
+
+The app already has early support for:
+
+* profile creation and switching
+* mod import
+* ZIP, 7z, and RAR archive handling basics. RAR5 support is still being worked on.
+* managed mod folders
+* mod enable and disable
+* mod priority order
+* plugin scanning
+* plugin enable and disable
+* plugin output files
+* deployment planning basics
+* deployment journal and recovery work
+* baseline and overwrite foundations
+* diagnostics and logs
+* experimental second screen plugin display
+
+Some of these systems are still being improved.
+
+## What is still being built
+
+Major work still planned before a stable 1.0 release includes:
+
+* stronger deploy safety
+* better unfinished deploy recovery
+* game folder validation
+* support report export
+* Nexus downloads and mod metadata
+* advanced FOMOD installer support
+* better BAIN installer support
+* stronger plugin intelligence
+* basic xEdit report bridge
+* practical LOOT support
+* better conflict view
+* better overwrite management
+* settings screen
+* storage manager
+* external SD support
+* cleaner public guides
+* more tests for risky file logic
+
 ## Roadmap
 
-Droid Mod Loader has a public roadmap covering deployment reliability, existing manual modlist adoption, GameNative integration, diagnostics, performance, themes, collections, and advanced plugin/installer support.
+The full roadmap is here:
 
-See the full roadmap here: [ROADMAP.md](ROADMAP.md)
+[ROADMAP.md](ROADMAP.md)
 
----
+The short version is:
 
-## Target Games
+* make deployment safe
+* make profiles reliable
+* make installed mods easier to understand
+* make plugin problems easier to see
+* make real mod archives install correctly
+* make GameNative setup less confusing
+* make support reports useful
+* then build collections, guides, and larger ecosystem features
 
-The project is designed primarily around Bethesda style mod layouts, with support goals including:
+## Installer support
 
-- **Skyrim Legendary Edition**
-- **Skyrim Special Edition**
-- **Fallout: New Vegas**
-- **Fallout 4**
-- **Oblivion**
+Many Bethesda mods use installers such as FOMOD or BAIN.
 
-While the broader long term focus includes multiple games, early workflow design and compatibility planning are centered on the kinds of file structures and mod management patterns common to Bethesda titles.
+Droid Mod Loader already has early installer analysis, but this needs to get much stronger before 1.0.
 
----
+Advanced FOMOD support is important because many popular mods use it. The goal is to support common FOMOD installers, remember user choices, preview what will be installed, and fail safely when an installer uses unsupported logic.
 
-## GameNative Support
+## Plugin intelligence, xEdit, and LOOT
 
-A major part of DroidModLoader’s development is direct support for **GameNative**.
+Plugin handling is one of the biggest parts of Bethesda modding.
 
-GameNative will serve as the main test environment for verifying that:
+Droid Mod Loader will be able to help with basic plugin problems such as:
 
-- mod installs are structured correctly
-- shared storage deployment works as intended
-- generated setups are usable in practice
-- modded game environments behave reliably enough for real testing
+* missing masters
+* disabled source mods
+* missing plugin files
+* official plugin rules
+* plugin dependency warnings
+* BSA and plugin pairing warnings
+* load order issues
+* useful plugin diagnostics
 
-This project is being built with actual use in mind, not just theoretical support. The Android management workflow and the Windows container runtime need to work together cleanly, and GameNative is the environment being used to prove this concept.
+Practical LOOT support is planned before 1.0. The goal is useful warnings and suggested sorting.
 
----
+## Planned guide support
 
-## Core Features
+Droid Mod Loader will eventually support guide style modding.
 
-### Mod Installation
+The first guide target is planned around Skyrim Legendary Edition on Snapdragon and Turnip based Android devices. Created by me.
 
-DroidModLoader is being designed to:
+The goal is to give users a stable starting point instead of throwing them into a giant modlist with no idea what went wrong.
 
-- import mod archives from device storage
-- extract archives into managed mod directories
-- keep each installed mod isolated in its own folder
-- support loose file scanning after extraction
-- prepare installed content for use in a shared game environment
+A guide should eventually help with:
 
-### File Scanning and Conflict Detection
+* required mods
+* optional mods
+* source links
+* install order
+* plugin order
+* GameNative settings
+* expected files
+* validation checks
+* support reports
 
-A core part of the app is visibility into files and conflicts. Planned capabilities include:
+## Community and support
 
-- path normalization for consistent file comparison
-- recursive scanning of extracted mod contents
-- file indexing for installed mods
-- detection of overlapping files between mods
-- hashing support where useful for faster comparison and validation
+Support, testing, project discussion, and updates are mainly handled through Discord.
 
-### Profile Management
+Discord Server:
 
-The project is intended to support profile based modlist configurations so users can:
+https://discord.gg/Q9dM262KRc
 
-- maintain separate mod setups per game
-- enable or disable mods by profile
-- experiment without rebuilding everything from scratch
-- keep cleaner separation between different playthroughs or test environments
+Good feedback includes:
 
-### Performance Oriented Workflow
+* what device you are using
+* what game you are testing
+* what GameNative setup you are using
+* what mods you installed
+* what went wrong
+* screenshots if useful
+* logs or support reports when available
 
-DroidModLoader is being built with large mod lists in mind. Long term performance goals include:
+## Community attribution
 
-- avoiding unnecessary rescans
-- using indexing and caching where practical
-- supporting smarter incremental updates
-- reducing the cost of rebuilding or validating large setups
+Special thanks to Deno and his Discord community for testing, feedback, troubleshooting, and shared modding knowledge.
 
-### Load Order and Plugin Workflow
+This project is shaped heavily by real testing and real user problems.
 
-The project also aims to reduce confusion around Bethesda plugin handling by providing:
+## Support the project
 
-- better visibility into plugin activation and ordering
-- support for plugin related output where appropriate
-- guidance around files such as `plugins.txt` and `loadorder.txt`
-- future tooling to simplify setup inside Windows container environments
+Droid Mod Loader is a personal project built around Android modding, GameNative testing, and a lot of trial and error.
 
----
+If you enjoy the project and want to support the time that goes into it, my Ko-fi is here:
 
-## Beta Companion Guide
+https://ko-fi.com/seansboottom
 
-When DroidModLoader reaches beta, the project will also introduce a **Viva New Vegas style modding guide for Skyrim Legendary Edition**.
-
-This guide will focus on creating a stable, well structured baseline to mod from rather than encouraging users to jump straight into large or unstable setups. The intent is to provide a practical starting point that reflects what actually works in this windows conrainer environment.
-
-### Why Skyrim Legendary Edition?
-
-The initial guide is being planned around **Skyrim Legendary Edition** because it offers more performance headroom on slower chips than more demanding Bethesda titles. That makes it a better baseline for early Android container based modding work, especially when testing on hardware with tighter performance limits.
-
-### Guide Goals
-
-The beta guide is intended to emphasize:
-
-- a clean and stable base setup
-- practical compatibility focused mod choices
-- a reliable starting point for future expansion
-- easier troubleshooting through a more controlled baseline
-- a modding path that is more realistic for lower end or slower ARM64 devices
-
----
-
-## Compatibility Roadmap
-
-Initial compatibility work for the Skyrim Legendary Edition guide will focus on **Snapdragon devices**.
-
-This narrower starting point is intentional. It allows testing to be done against a more controlled set of variables, including:
-
-- specific mod combinations
-- expected game behavior
-- Turnip driver compatibility
-- container stability and performance
-
-Once compatibility is better understood on Snapdragon hardware, the project can expand toward a broader focus on other **ARM64 chips**.
-
-The goal is to establish a dependable baseline first, then widen support from there.
-
----
-
-## Development Direction
-
-DroidModLoader is being built incrementally, with backend systems taking priority before heavier UI expansion.
-
-Current development is centered on foundational components such as:
-
-- path normalization
-- archive extraction
-- recursive file scanning
-- metadata indexing
-- install structure validation
-
----
-
-## Why This Project Exists
-
-Mobile and container based Bethesda modding still has major tooling gaps.
-
-Many users attempting these workflows end up manually copying files, guessing at folder structure, troubleshooting blind conflicts, and rebuilding setups from scratch when something goes wrong. DroidModLoader exists to reduce that friction and make the process more understandable for both new and experienced users.
-
-The long term aim is a mod manager that is practical, transparent, and grounded in real-world Android modding constraints.
-
----
-
-## Community and Support
-
-Support, discussion, testing, and project updates will primarily be hosted through Discord.
-
-**Discord Server:** https://discord.gg/Q9dM262KRc
-
-This community will serve as the main place for:
-
-- support requests
-- project feedback
-- testing discussion
-- compatibility findings
-- development updates
-
----
-
-## Community Attribution
-
-Special thanks to Deno and his Discord community that contributes testing, feedback, troubleshooting, and shared modding knowledge. Community input plays a major role in shaping the direction of this project.
-
----
-
-## Project Status
-
-DroidModLoader is currently in active development.
-
-The features and systems described in this README reflect the intended direction of the project and may evolve as testing continues and design decisions are refined.
-
----
+No pressure. Testing the app, reporting bugs, sharing notes, and helping other users already helps a lot.
 
 ## Contributing
 
-Feedback is especially valuable from users with experience in:
+Useful contributions include:
 
-- Bethesda modding workflows
-- Android file handling
-- Windows container gaming environments
-- load order and plugin management
-- file conflict analysis
-- mobile performance testing on ARM64 devices
+* bug reports
+* tester feedback
+* compatibility notes
+* documentation fixes
+* clear reproduction steps
+* ideas for safer file handling
+* GameNative setup findings
+* Bethesda modding knowledge
 
-Bug reports, technical suggestions, and compatibility findings are all useful.
+If you fork or modify the project, please keep the license notice intact and credit Droid Mod Loader / CyberShonk when sharing derivative work.
 
----
-
-## License and attribution
+## License
 
 Droid Mod Loader is released under the MIT License.
 
-You are welcome to fork, modify, and build from this project. Please keep the
-license notice intact and credit Droid Mod Loader / CyberShonk when sharing
-derivative work.
+See:
 
----
+[LICENSE](LICENSE)
 
 ## Disclaimer
 
-DroidModLoader is an independent project. Users are responsible for complying with the permissions, licenses, and distribution terms associated with any third party mods they install or manage.
+Droid Mod Loader is an independent project.
 
-This project does not claim ownership over third party mods, game assets, or external community tools.
+Users are responsible for following the permissions, licenses, and distribution terms for any mods, games, or third party tools they use.
 
----
-
-## Tip
-If you'd like to support me here's my 
-Ko-fi: https://ko-fi.com/seansboottom
+This project does not claim ownership over third party mods, Bethesda game assets, GameNative, xEdit, LOOT, Nexus Mods, or community modding tools.
