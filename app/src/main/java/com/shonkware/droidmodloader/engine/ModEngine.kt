@@ -1793,6 +1793,8 @@ class ModEngine(
             return null
         }
 
+
+
         return buildString {
             appendLine("Previous deploy may not have finished cleanly.")
             appendLine("Game: ${record.gameId}")
@@ -1806,6 +1808,7 @@ class ModEngine(
             appendLine("Preflight warnings: ${record.planSummary.preflightWarningCount}")
             appendLine("This build will only warn. Recovery actions will be added later.")
         }
+
     }
 
     fun markDeploymentJournalReviewed(gameId: String): Boolean {

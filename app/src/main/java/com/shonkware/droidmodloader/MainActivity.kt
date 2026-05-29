@@ -496,6 +496,10 @@ class MainActivity : ComponentActivity() {
             val warning = engine.getDeploymentJournalStartupWarning(selectedGameId)
 
             if (warning.isNullOrBlank()) {
+                runOnUiThread {
+                    deployRecoveryWarningText = ""
+                    showDeployRecoveryDialog = false
+                }
                 return
             }
 
@@ -1218,7 +1222,7 @@ class MainActivity : ComponentActivity() {
             appendLine("=== Droid Mod Loader Diagnostic Summary ===")
             appendLine()
             appendLine("App Version: $versionName ($versionCode)")
-            appendLine("Display Version: 0.1 Beta")
+            appendLine("Display Version: $versionName")
             appendLine("Package: $packageName")
             appendLine("Android Version: ${android.os.Build.VERSION.RELEASE}")
             appendLine("Device: ${android.os.Build.MODEL}")

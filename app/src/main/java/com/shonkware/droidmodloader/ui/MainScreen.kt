@@ -229,12 +229,14 @@ private fun MainDashboardScreen(
                 onShareLogs = actions.onShareLogs
             )
 
-            DeveloperToolsCard(
-                operationInProgress = state.operationInProgress,
-                onBuildResolvedDataGraph = actions.onBuildResolvedDataGraph,
-                onBuildDeploymentPlan = actions.onBuildDeploymentPlan,
-                onRepairV050Artifacts = actions.onRepairV050Artifacts,
-            )
+            if (state.developerModeEnabled) {
+                DeveloperToolsCard(
+                    operationInProgress = state.operationInProgress,
+                    onBuildResolvedDataGraph = actions.onBuildResolvedDataGraph,
+                    onBuildDeploymentPlan = actions.onBuildDeploymentPlan,
+                    onRepairV050Artifacts = actions.onRepairV050Artifacts,
+                )
+            }
 
             RecoveryToolsCard(
                 operationInProgress = state.operationInProgress,
