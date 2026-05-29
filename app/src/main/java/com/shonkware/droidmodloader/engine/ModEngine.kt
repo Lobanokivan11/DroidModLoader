@@ -1652,6 +1652,45 @@ class ModEngine(
         )
     }
 
+    fun getDeploymentJournalStartupWarning(gameId: String): String? {
+        val repository = DeploymentJournalRepository(
+            getDeploymentJournalFile(gameId)
+        )
 
+        val record = repository.load() ?: return null
+
+        if (record.status != DeploymentJournalStatus.STARTED) {
+            return null
+        }
+
+        return buildString {
+            appendLine("Previous deploy may not have finished cleanly.")
+            appendLine("Game: ${record.gameId}")
+            appendLine("Profile: ${record.profileId}")
+            appendLine("Operation ID: ${record.operationId}")
+            appendLine("Status: ${record.status}")
+            appendLine("Started: ${record.startedAtEpochMillis}")
+            appendLine("Data operations planned: ${record.planSummary.dataOperationCount}")
+            appendLine("Game Root operations planned: ${record.planSummary.rootOperationCount}")
+            appendLine("Preflight errors: ${record.planSummary.preflightErrorCount}")
+            appendLine("Preflight warnings: ${record.planSummary.preflightWarningCount}")
+            appendLine("This build will only warn. Recovery actions will be added later.")
+        }
+    }
+
+    fun markDeploymentJournalReviewed(gameId: String): Boolean {
+        val repository = DeploymentJournalRepository(
+            getDeploymentJournalFile(gameId)
+        )
+
+        val record = repository.load() ?: return false
+
+        if (record.status != DeploymentJournalStatus.STARTED) {
+            return false
+        }
+
+        repository.markReviewed(record)
+        return true
+    }
 
 }

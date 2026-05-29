@@ -3,7 +3,8 @@ package com.shonkware.droidmodloader.engine.deploy.journal
 enum class DeploymentJournalStatus {
     STARTED,
     COMPLETED,
-    FAILED
+    FAILED,
+    REVIEWED
 }
 
 data class DeploymentJournalRecord(

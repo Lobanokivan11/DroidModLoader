@@ -52,6 +52,14 @@ import com.shonkware.droidmodloader.engine.model.GameProfile
 import com.shonkware.droidmodloader.engine.model.Mod
 import com.shonkware.droidmodloader.engine.model.PluginEntry
 import com.shonkware.droidmodloader.engine.overwrite.OverwriteEntry
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.Text
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun HeaderCard(
@@ -1226,6 +1234,135 @@ fun OverwriteDialog(
                     Text("Close")
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun DeployRecoveryWarningCard(
+    warningText: String,
+    onViewDetails: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    if (warningText.isBlank()) return
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Previous deploy may need review",
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Droid Mod Loader found a deploy journal that was not marked completed. This build will warn only. Recovery actions are coming later.",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = onViewDetails) {
+                    Text("View Details")
+                }
+
+                Button(onClick = onDismiss) {
+                    Text("Dismiss")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RecoveryToolsCard(
+    operationInProgress: Boolean,
+    deployRecoveryWarningText: String,
+    onViewLastDeployJournal: () -> Unit,
+    onMarkDeployRecoveryReviewed: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "Recovery Tools",
+                fontWeight = FontWeight.Bold
+            )
+
+            Text(
+                text = "Tools for reviewing deploy state after a failed or interrupted deploy. Only journal review is active right now.",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Button(
+                enabled = !operationInProgress,
+                onClick = onViewLastDeployJournal,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("View Last Deploy Journal")
+            }
+
+            Button(
+                enabled = !operationInProgress && deployRecoveryWarningText.isNotBlank(),
+                onClick = onMarkDeployRecoveryReviewed,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Mark Warning Reviewed")
+            }
+
+            Text(
+                text = "Coming later:",
+                fontWeight = FontWeight.Bold
+            )
+
+            Button(
+                enabled = false,
+                onClick = {},
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Resume Interrupted Deploy")
+            }
+
+            Button(
+                enabled = false,
+                onClick = {},
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Rollback Last Deploy")
+            }
+
+            Button(
+                enabled = false,
+                onClick = {},
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Force Full Redeploy")
+            }
+
+            Button(
+                enabled = false,
+                onClick = {},
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Rebuild Deploy Manifest")
+            }
+
+            Button(
+                enabled = false,
+                onClick = {},
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Rebuild Data Baseline")
+            }
+
+            Text(
+                text = "Disabled tools are planned recovery actions. They are shown here early so testers know where this system is going.",
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }

@@ -138,4 +138,15 @@ class DeploymentJournalRepository(
         if (!has(name) || isNull(name)) return null
         return optLong(name)
     }
+
+    fun markReviewed(record: DeploymentJournalRecord) {
+        save(
+            record.copy(
+                status = DeploymentJournalStatus.REVIEWED,
+                completedAtEpochMillis = System.currentTimeMillis(),
+                failureMessage = "User reviewed unfinished deploy warning. No recovery action was performed."
+            )
+        )
+    }
+
 }

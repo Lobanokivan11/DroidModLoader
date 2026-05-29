@@ -110,6 +110,9 @@ class MainActivity : ComponentActivity() {
     private var overwriteBaselineExists by mutableStateOf(false)
     private var overwriteMessage by mutableStateOf("")
 
+    private var deployRecoveryWarningText by mutableStateOf("")
+    private var showDeployRecoveryDialog by mutableStateOf(false)
+
     private val importZipLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
@@ -247,6 +250,9 @@ class MainActivity : ComponentActivity() {
             overwriteBaselineExists = overwriteBaselineExists,
             overwriteMessage = overwriteMessage,
             selectedRootTreeUriText = selectedRootTreeUriText,
+
+            deployRecoveryWarningText = deployRecoveryWarningText,
+            showDeployRecoveryDialog = showDeployRecoveryDialog,
 
         )
     }
@@ -416,6 +422,26 @@ class MainActivity : ComponentActivity() {
                 runInBackground { runDeploymentPlanDebugSummary() }
             },
 
+            onViewLastDeployJournal = {
+                runInBackground { runLastDeployJournalDebugSummary() }
+            },
+
+            onOpenDeployRecoveryDetails = {
+                showDeployRecoveryDialog = true
+            },
+            onCloseDeployRecoveryDetails = {
+                showDeployRecoveryDialog = false
+            },
+            onDismissDeployRecoveryWarning = {
+                deployRecoveryWarningText = ""
+                showDeployRecoveryDialog = false
+                appendLog("Dismissed previous deploy warning for this session.")
+            },
+
+            onMarkDeployRecoveryReviewed = {
+                runInBackground { markLastDeployJournalReviewed() }
+            },
+
         )
 
     }
@@ -432,6 +458,7 @@ class MainActivity : ComponentActivity() {
 
             val engine = createModEngineForWorkflows()
             if (engine != null) {
+                checkLastDeployJournalOnStartup(engine)
                 syncPluginsFromCurrentState(engine)
             }
             refreshDashboard()
@@ -443,6 +470,32 @@ class MainActivity : ComponentActivity() {
         Thread {
             block()
         }.start()
+    }
+
+    private fun checkLastDeployJournalOnStartup(engine: ModEngine) {
+        try {
+            val warning = engine.getDeploymentJournalStartupWarning(selectedGameId)
+
+            if (warning.isNullOrBlank()) {
+                return
+            }
+
+            appendLog("----- Previous Deploy Journal Warning -----")
+            warning.lineSequence().forEach { line ->
+                appendLog(line)
+            }
+            appendLog("----- Previous Deploy Journal Warning End -----")
+
+            runOnUiThread {
+                deployRecoveryWarningText = warning
+                showDeployRecoveryDialog = false
+            }
+
+            updateLastOperationStatus("Previous deploy may need review.")
+
+        } catch (e: Exception) {
+            appendError("Failed to check previous deploy journal: ${e.message}", e)
+        }
     }
 
     //log stuff
@@ -2474,6 +2527,66 @@ class MainActivity : ComponentActivity() {
             appendError("Deploy plan failed: ${e.message}", e)
             appendLog("RESULT: FAIL")
             failOperation("Deploy plan failed: ${e.message}", e)
+        }
+
+        refreshDashboard()
+    }
+
+    private fun markLastDeployJournalReviewed() {
+        val engine = createModEngineForWorkflows()
+        if (engine == null) {
+            appendError("Could not mark deploy journal reviewed: engine unavailable.")
+            return
+        }
+
+        try {
+            val changed = engine.markDeploymentJournalReviewed(selectedGameId)
+
+            if (changed) {
+                appendLog("Marked unfinished deploy journal as reviewed.")
+                updateLastOperationStatus("Previous deploy warning reviewed.")
+            } else {
+                appendLog("No unfinished deploy journal needed review.")
+            }
+
+            runOnUiThread {
+                deployRecoveryWarningText = ""
+                showDeployRecoveryDialog = false
+            }
+        } catch (e: Exception) {
+            appendError("Failed to mark deploy journal reviewed: ${e.message}", e)
+        }
+
+        refreshDashboard()
+    }
+
+    private fun runLastDeployJournalDebugSummary() {
+        if (operationInProgress) {
+            appendLog("Ignoring deploy journal request: operation already in progress.")
+            return
+        }
+
+        beginOperation("Reading last deploy journal...")
+
+        try {
+            val engine = createModEngineForWorkflows()
+                ?: throw IllegalStateException("Could not create engine for active profile.")
+
+            appendLog("----- Last Deploy Journal -----")
+            engine.getDeploymentJournalDebugSummary(selectedGameId)
+                .lineSequence()
+                .forEach { line ->
+                    appendLog(line)
+                }
+            appendLog("----- Last Deploy Journal End -----")
+            appendLog("No files were changed.")
+            appendLog("RESULT: PASS")
+
+            finishOperation("Deploy journal read.")
+        } catch (e: Exception) {
+            appendError("Failed to read deploy journal: ${e.message}", e)
+            appendLog("RESULT: FAIL")
+            failOperation("Deploy journal read failed: ${e.message}", e)
         }
 
         refreshDashboard()

@@ -16,8 +16,10 @@ import com.shonkware.droidmodloader.engine.model.GameProfile
 import com.shonkware.droidmodloader.engine.index.ModContentIndex
 import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstall
 import com.shonkware.droidmodloader.engine.index.ModFilePreview
-
 import com.shonkware.droidmodloader.engine.overwrite.OverwriteEntry
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Text
 
 data class DashboardUiState(
     val appName: String,
@@ -62,6 +64,9 @@ data class DashboardUiState(
     val showOverwriteDialog: Boolean,
     val overwriteBaselineExists: Boolean,
     val overwriteMessage: String,
+
+    val deployRecoveryWarningText: String = "",
+    val showDeployRecoveryDialog: Boolean = false,
 
 )
 
@@ -124,8 +129,14 @@ data class DashboardActions(
     val onRepairV050Artifacts: () -> Unit = {},
 
     val onBuildResolvedDataGraph: () -> Unit = {},
-
     val onBuildDeploymentPlan: () -> Unit = {},
+    val onViewLastDeployJournal: () -> Unit = {},
+
+    val onOpenDeployRecoveryDetails: () -> Unit = {},
+    val onCloseDeployRecoveryDetails: () -> Unit = {},
+    val onDismissDeployRecoveryWarning: () -> Unit = {},
+
+    val onMarkDeployRecoveryReviewed: () -> Unit = {},
 )
 
 @Composable
@@ -157,6 +168,12 @@ private fun MainDashboardScreen(
                 lastOperationStatus = state.lastOperationStatus,
                 summaryText = state.summaryText,
                 onOpenProfileDialog = actions.onOpenProfileDialog
+            )
+
+            DeployRecoveryWarningCard(
+                warningText = state.deployRecoveryWarningText,
+                onViewDetails = actions.onOpenDeployRecoveryDetails,
+                onDismiss = actions.onDismissDeployRecoveryWarning
             )
 
             QuickStartCard()
@@ -211,6 +228,30 @@ private fun MainDashboardScreen(
                 onBuildDeploymentPlan = actions.onBuildDeploymentPlan,
                 onRepairV050Artifacts = actions.onRepairV050Artifacts,
             )
+            if (state.showDeployRecoveryDialog) {
+                AlertDialog(
+                    onDismissRequest = actions.onCloseDeployRecoveryDetails,
+                    title = {
+                        Text("Previous Deploy Warning")
+                    },
+                    text = {
+                        Text(state.deployRecoveryWarningText)
+                    },
+                    confirmButton = {
+                        TextButton(onClick = actions.onCloseDeployRecoveryDetails) {
+                            Text("Close")
+                        }
+                    }
+                )
+            }
+            if (state.developerModeEnabled) {
+                RecoveryToolsCard(
+                    operationInProgress = state.operationInProgress,
+                    deployRecoveryWarningText = state.deployRecoveryWarningText,
+                    onViewLastDeployJournal = actions.onViewLastDeployJournal,
+                    onMarkDeployRecoveryReviewed = actions.onMarkDeployRecoveryReviewed
+                )
+            }
         }
     }
 }
