@@ -63,6 +63,8 @@ import com.shonkware.droidmodloader.engine.deploy.journal.DeploymentJournalRecor
 import com.shonkware.droidmodloader.engine.deploy.journal.DeploymentJournalRepository
 import com.shonkware.droidmodloader.engine.deploy.journal.DeploymentJournalResultSummary
 import com.shonkware.droidmodloader.engine.deploy.journal.DeploymentJournalStatus
+import com.shonkware.droidmodloader.engine.download.DownloadedArchiveRecord
+import com.shonkware.droidmodloader.engine.download.DownloadedArchiveRepository
 
 data class UninstallResult(
     val removed: Boolean,
@@ -80,14 +82,19 @@ class ModEngine(
     private val gameConfigFile: File,
     private val pluginListFile: File,
     private val pluginsTxtFile: File,
-    private val loadorderTxtFile: File
-
+    private val loadorderTxtFile: File,
+    private val archiveLibraryDir: File,
+    private val downloadedArchiveListFile: File
 ) {
 
     private val modInstaller = ModInstaller(tempDir, modsDir)
     private val resolver = ConflictResolver()
     private val stateRepository = ModStateRepository(stateFile)
     private val installedModRecordRepository = InstalledModRecordRepository()
+    private val downloadedArchiveRepository = DownloadedArchiveRepository(
+        archiveLibraryDir = archiveLibraryDir,
+        archiveListFile = downloadedArchiveListFile
+    )
     private val deployFileClassifier = DeployFileClassifier()
     private val gameDeploymentConfigRepository = GameDeploymentConfigRepository(gameConfigFile)
     private val pluginListRepository = PluginListRepository(pluginListFile)
@@ -1794,7 +1801,6 @@ class ModEngine(
         }
 
 
-
         return buildString {
             appendLine("Previous deploy may not have finished cleanly.")
             appendLine("Game: ${record.gameId}")
@@ -1901,5 +1907,39 @@ class ModEngine(
             }
         }
     }
+
+    fun registerDownloadedArchive(
+        archiveFile: File,
+        originalDisplayName: String,
+        sourceUri: String? = null,
+        sourceUrl: String? = null
+    ): DownloadedArchiveRecord {
+        return downloadedArchiveRepository.registerArchive(
+            archiveFile = archiveFile,
+            originalDisplayName = originalDisplayName,
+            sourceUri = sourceUri,
+            sourceUrl = sourceUrl
+        )
+    }
+    fun getDownloadedArchives(): List<DownloadedArchiveRecord> {
+        return downloadedArchiveRepository.load()
+    }
+    fun getDownloadedArchiveById(archiveId: String?): DownloadedArchiveRecord? {
+        return downloadedArchiveRepository.findById(archiveId)
+    }
+    fun markDownloadedArchiveInstalled(
+        archiveId: String?,
+        installedModId: String
+    ) {
+        downloadedArchiveRepository.markInstalled(
+            archiveId = archiveId,
+            installedModId = installedModId
+        )
+    }
+    fun buildDownloadedArchiveSummary(): String {
+        return downloadedArchiveRepository.buildSummary()
+    }
+
+
 
 }

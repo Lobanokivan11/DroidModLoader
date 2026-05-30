@@ -644,6 +644,8 @@ class MainActivity : ComponentActivity() {
         val loadorderTxtFile = File(profileStateDir, "loadorder.txt")
         val deploymentManifestFile = File(profileStateDir, "deployment_manifest.json")
         val gameConfigFile = File(profileStateDir, "game_deployment_configs.json")
+        val archiveLibraryDir = File(externalBaseDir, "downloads/archive_library")
+        val downloadedArchiveListFile = File(profileStateDir, "downloaded_archives.json")
 
         val deployDir = File(
             externalBaseDir,
@@ -653,6 +655,7 @@ class MainActivity : ComponentActivity() {
         tempDir.mkdirs()
         modsDir.mkdirs()
         profileStateDir.mkdirs()
+        archiveLibraryDir.mkdirs()
         deployDir.mkdirs()
 
         return ModEngine(
@@ -665,7 +668,9 @@ class MainActivity : ComponentActivity() {
             gameConfigFile = gameConfigFile,
             pluginListFile = pluginListFile,
             pluginsTxtFile = pluginsTxtFile,
-            loadorderTxtFile = loadorderTxtFile
+            loadorderTxtFile = loadorderTxtFile,
+            archiveLibraryDir = archiveLibraryDir,
+            downloadedArchiveListFile = downloadedArchiveListFile
         )
     }
     private fun sanitizeStorageName(value: String): String {
