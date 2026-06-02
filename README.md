@@ -306,6 +306,8 @@ https://ko-fi.com/seansboottom
 
 No pressure. Testing the app, reporting bugs, sharing notes, and helping other users already helps a lot.
 
+If you want access to my secrets join the Patreon: https://patreon.com/SeanBottoms
+
 ## Contributing
 
 Useful contributions include:
