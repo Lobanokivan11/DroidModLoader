@@ -51,12 +51,15 @@ Use this format for each release:
 - Troubleshooting documentation.
 - Glossary for DML and modding terms.
 - Versioning documentation.
+- Public release notes template.
+- APK upload checklist template.
 
 ### Changed
 
 - README now links to project documentation.
 - Expanded architecture documentation maintenance rules.
 - Clarified versionName, versionCode, APK filename, and changelog expectations.
+  - Expanded release checklist links to release templates and versioning documentation.
 
 ### Fixed
 

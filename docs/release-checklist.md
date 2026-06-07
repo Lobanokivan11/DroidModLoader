@@ -1,5 +1,14 @@
 # Droid Mod Loader Release Checklist
 
+## Related Release Files
+
+| File                                           | Purpose                                |
+|------------------------------------------------|----------------------------------------|
+| `releases/changelog.md`                        | User-facing release history            |
+| `releases/templates/release-notes-template.md` | Reusable public release notes template |
+| `releases/templates/apk-upload-checklist.md`   | Upload checklist for APK publishing    |
+| `docs/process/versioning.md`                   | Version naming and versionCode rules   |
+
 Use this checklist before uploading an APK publicly.
 
 ## Version

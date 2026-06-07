@@ -224,6 +224,8 @@ Major work still planned before a stable 1.0 release includes:
 - [Testing](docs/testing.md)
 - [Release Checklist](docs/release-checklist.md)
 - [Versioning](docs/process/versioning.md)
+- [Release Notes Template](releases/templates/release-notes-template.md)
+- [APK Upload Checklist](releases/templates/apk-upload-checklist.md)
 - [Development Loop](docs/process/development-loop.md)
 - [Roadmap vs Tasks](docs/process/roadmap-vs-tasks.md)
 - [Roadmap](ROADMAP.md)
