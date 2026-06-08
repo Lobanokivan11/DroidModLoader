@@ -75,7 +75,6 @@ Use this format for each release:
 ### Known Issues
 
 - Release checklist is still being formalized.
-- Some UI text fitting issues are still being cleaned up.
 - Recovery tools and unfinished deploy warnings still need more polish.
 
 ### Upgrade Notes
