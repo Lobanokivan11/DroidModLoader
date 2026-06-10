@@ -40,6 +40,7 @@ import com.shonkware.droidmodloader.ui.workflow.DeploymentConfigUiMapper
 import com.shonkware.droidmodloader.ui.workflow.DeploymentConfigUiState
 import com.shonkware.droidmodloader.ui.workflow.ProfileConfigUiMapper
 import com.shonkware.droidmodloader.ui.workflow.ProfileConfigUiState
+import com.shonkware.droidmodloader.ui.workflow.PluginSyncWorkflowController
 
 class MainActivity : ComponentActivity() {
 
@@ -169,6 +170,12 @@ class MainActivity : ComponentActivity() {
         }
     }
     private val operationStatusController = OperationStatusController()
+
+    private val pluginSyncWorkflowController = PluginSyncWorkflowController(
+        createEngine = { createModEngineForWorkflows() },
+        syncPluginsFromCurrentState = { engine -> syncPluginsFromCurrentState(engine) },
+        refreshDashboard = { refreshDashboard() }
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -309,11 +316,7 @@ class MainActivity : ComponentActivity() {
                 loadSelectedGameConfigIntoUi()
                 runInBackground {
                     ensureDataBaselineIfMissing("selected game changed")
-                    val engine = createModEngineForWorkflows()
-                    if (engine != null) {
-                        syncPluginsFromCurrentState(engine)
-                    }
-                    refreshDashboard()
+                    pluginSyncWorkflowController.syncWithNewEngineThenRefresh()
                 }
             },
             onRealDeployChanged = { enabled ->
@@ -482,11 +485,12 @@ class MainActivity : ComponentActivity() {
             ensureDataBaselineIfMissing("startup")
 
             val engine = createModEngineForWorkflows()
+
             if (engine != null) {
                 checkLastDeployJournalOnStartup(engine)
-                syncPluginsFromCurrentState(engine)
             }
-            refreshDashboard()
+
+            pluginSyncWorkflowController.syncWithExistingEngineThenRefresh(engine)
         }
 
         appendLog("UI ready.")
@@ -2805,5 +2809,6 @@ class MainActivity : ComponentActivity() {
         selectedRootTreeUriText = state.targetRootTreeUriText
         realDeployEnabledState = state.realDeployEnabled
     }
+
 
 }
