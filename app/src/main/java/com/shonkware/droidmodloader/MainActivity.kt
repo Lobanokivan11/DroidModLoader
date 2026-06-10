@@ -28,9 +28,6 @@ import com.shonkware.droidmodloader.engine.install.PreparedArchiveInstall
 import com.shonkware.droidmodloader.engine.index.ModFilePreview
 import com.shonkware.droidmodloader.ui.SecondScreenController
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import com.shonkware.droidmodloader.ui.FullscreenPanel
 import com.shonkware.droidmodloader.engine.overwrite.OverwriteEntry
 import android.os.Looper
@@ -38,6 +35,7 @@ import java.util.concurrent.CountDownLatch
 import com.shonkware.droidmodloader.engine.install.InstallerGroupType
 import com.shonkware.droidmodloader.engine.repair.V050ArtifactRepairTool
 import com.shonkware.droidmodloader.engine.deploy.plan.DeploymentPreflightException
+import com.shonkware.droidmodloader.ui.workflow.OperationLogFormatter
 
 class MainActivity : ComponentActivity() {
 
@@ -527,7 +525,7 @@ class MainActivity : ComponentActivity() {
 
     //log stuff
     private fun appendLog(message: String) {
-        val line = formatLogLine(message)
+        val line = OperationLogFormatter.formatLogLine(message)
 
         Log.d(TAG, line)
         appendLogToFile(line)
@@ -541,7 +539,7 @@ class MainActivity : ComponentActivity() {
         }
     }
     private fun appendError(message: String, throwable: Throwable? = null) {
-        val line = formatLogLine("ERROR: $message")
+        val line = OperationLogFormatter.formatLogLine("ERROR: $message")
 
         if (throwable != null) {
             Log.e(TAG, line, throwable)
@@ -563,28 +561,12 @@ class MainActivity : ComponentActivity() {
         title: String,
         result: com.shonkware.droidmodloader.engine.deploy.DeploymentResult
     ) {
-        appendLog("$title:")
-        appendLog("  Adds: ${result.addCount}")
-        appendLog("  Removes: ${result.removeCount}")
-        appendLog("  Updates: ${result.updateCount}")
-        appendLog("  Backups created: ${result.backupCount}")
-        appendLog("  Backups restored: ${result.restoreCount}")
-        appendLog("  Protected conflicts: ${result.protectedConflictCount}")
-        appendLog("  Final file count: ${result.finalRecordCount}")
-    }
-    private fun timestampNow(): String {
-        return SimpleDateFormat("HH:mm:ss.SSS", Locale.US).format(Date())
-    }
-    private fun formatLogLine(message: String): String {
-        return "[${timestampNow()}] $message"
-    }
-    private fun formatOperationDuration(startedAtMillis: Long): String {
-        if (startedAtMillis <= 0L) {
-            return "0 ms"
+        OperationLogFormatter.deploymentResultBlockLines(
+            title = title,
+            result = result
+        ).forEach { line ->
+            appendLog(line)
         }
-
-        val elapsedMillis = System.currentTimeMillis() - startedAtMillis
-        return "${elapsedMillis.coerceAtLeast(0L)} ms"
     }
     private fun beginOperation(text: String) {
         activeOperationStartedAtMillis = System.currentTimeMillis()
@@ -599,7 +581,7 @@ class MainActivity : ComponentActivity() {
         appendLog("OPERATION START: $text")
     }
     private fun finishOperation(successText: String) {
-        val durationText = formatOperationDuration(activeOperationStartedAtMillis)
+        val durationText = OperationLogFormatter.formatOperationDuration(activeOperationStartedAtMillis)
         activeOperationStartedAtMillis = 0L
 
         val completedText = "$successText ($durationText)"
@@ -614,7 +596,7 @@ class MainActivity : ComponentActivity() {
         appendLog("OPERATION END: $completedText")
     }
     private fun failOperation(message: String, throwable: Throwable? = null) {
-        val durationText = formatOperationDuration(activeOperationStartedAtMillis)
+        val durationText = OperationLogFormatter.formatOperationDuration(activeOperationStartedAtMillis)
         activeOperationStartedAtMillis = 0L
 
         val failedText = "$message ($durationText)"

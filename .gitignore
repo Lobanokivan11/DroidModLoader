@@ -20,7 +20,6 @@ local.properties
 .gradle/
 build/
 app/build/
-
 # Signing/private files
 *.jks
 *.keystore
@@ -34,3 +33,5 @@ keystore.properties
 
 # Private local notes
 private-notes/
+/dist/
+/nexus-upload/
