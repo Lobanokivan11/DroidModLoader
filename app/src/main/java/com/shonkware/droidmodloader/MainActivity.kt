@@ -43,6 +43,7 @@ import com.shonkware.droidmodloader.ui.workflow.ProfileConfigUiState
 import com.shonkware.droidmodloader.ui.workflow.PluginSyncWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.PluginActionWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.InstallerWorkflowController
+import com.shonkware.droidmodloader.engine.install.InstallerOptionSelectionHelper
 
 class MainActivity : ComponentActivity() {
 
@@ -2287,69 +2288,13 @@ class MainActivity : ComponentActivity() {
     }
     private fun toggleInstallerOption(optionId: String) {
         val prepared = pendingArchiveInstall ?: return
-        val plan = prepared.plan
 
-        val group = plan.groups.firstOrNull { candidate ->
-            candidate.options.any { it.id == optionId }
-        }
-
-        if (group == null) {
-            pendingInstallerSelectedOptionIds =
-                if (pendingInstallerSelectedOptionIds.contains(optionId)) {
-                    pendingInstallerSelectedOptionIds - optionId
-                } else {
-                    pendingInstallerSelectedOptionIds + optionId
-                }
-            return
-        }
-
-        val option = group.options.firstOrNull { it.id == optionId } ?: return
-
-        if (option.required) {
-            return
-        }
-
-        val groupOptionIds = group.options.map { it.id }.toSet()
-
-        pendingInstallerSelectedOptionIds = when (group.type) {
-            InstallerGroupType.SELECT_EXACTLY_ONE -> {
-                // Always keep exactly one option from this group selected.
-                (pendingInstallerSelectedOptionIds - groupOptionIds) + optionId
-            }
-
-            InstallerGroupType.SELECT_AT_MOST_ONE -> {
-                // Allow zero or one selected option from this group.
-                if (pendingInstallerSelectedOptionIds.contains(optionId)) {
-                    pendingInstallerSelectedOptionIds - optionId
-                } else {
-                    (pendingInstallerSelectedOptionIds - groupOptionIds) + optionId
-                }
-            }
-
-            InstallerGroupType.SELECT_AT_LEAST_ONE -> {
-                // Allow multiple, but do not allow removing the last selected option from this group.
-                val currentlySelectedInGroup = pendingInstallerSelectedOptionIds.intersect(groupOptionIds)
-
-                if (pendingInstallerSelectedOptionIds.contains(optionId)) {
-                    if (currentlySelectedInGroup.size <= 1) {
-                        pendingInstallerSelectedOptionIds
-                    } else {
-                        pendingInstallerSelectedOptionIds - optionId
-                    }
-                } else {
-                    pendingInstallerSelectedOptionIds + optionId
-                }
-            }
-
-            InstallerGroupType.SELECT_ANY -> {
-                // Normal checkbox behavior.
-                if (pendingInstallerSelectedOptionIds.contains(optionId)) {
-                    pendingInstallerSelectedOptionIds - optionId
-                } else {
-                    pendingInstallerSelectedOptionIds + optionId
-                }
-            }
-        }
+        pendingInstallerSelectedOptionIds =
+            InstallerOptionSelectionHelper.toggleOption(
+                groups = prepared.plan.groups,
+                selectedOptionIds = pendingInstallerSelectedOptionIds,
+                optionId = optionId
+            )
     }
     private fun cancelPendingInstallerInstall() {
         val prepared = pendingArchiveInstall ?: return
