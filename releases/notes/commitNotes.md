@@ -9,6 +9,7 @@ fix: move installer option tests to test source set
 fix: remove unused junit jupiter catalog entry
 refactor: extract mod action workflow controller
 refactor: extract archive import result handling
+refactor: split mods dashboard components
 
 
 
