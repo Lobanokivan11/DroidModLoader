@@ -41,6 +41,7 @@ import com.shonkware.droidmodloader.ui.workflow.DeploymentConfigUiState
 import com.shonkware.droidmodloader.ui.workflow.ProfileConfigUiMapper
 import com.shonkware.droidmodloader.ui.workflow.ProfileConfigUiState
 import com.shonkware.droidmodloader.ui.workflow.PluginSyncWorkflowController
+import com.shonkware.droidmodloader.ui.workflow.PluginActionWorkflowController
 
 class MainActivity : ComponentActivity() {
 
@@ -177,6 +178,17 @@ class MainActivity : ComponentActivity() {
         refreshDashboard = { refreshDashboard() }
     )
 
+    private val pluginActionWorkflowController by lazy {
+        PluginActionWorkflowController(
+            runInBackground = { task -> runInBackground(task) },
+            writeLoadOrderFiles = { runWriteLoadOrderFilesWorkflow() },
+            togglePluginEnabled = { normalizedPath -> togglePluginEnabled(normalizedPath) },
+            movePluginUp = { normalizedPath -> movePluginUp(normalizedPath) },
+            movePluginDown = { normalizedPath -> movePluginDown(normalizedPath) },
+            applyPluginOrder = { orderedPluginPaths -> applyPluginOrder(orderedPluginPaths) }
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -288,7 +300,7 @@ class MainActivity : ComponentActivity() {
                 runInBackground { runDeployWorkflow() }
             },
             onWriteLoadOrderFiles = {
-                runInBackground { runWriteLoadOrderFilesWorkflow() }
+                pluginActionWorkflowController.writeLoadOrderFiles()
             },
             onToggleMod = { modId ->
                 runInBackground { toggleModEnabled(modId) }
@@ -303,13 +315,13 @@ class MainActivity : ComponentActivity() {
                 showDeleteConfirmDialog(mod)
             },
             onTogglePlugin = { normalizedPath ->
-                runInBackground { togglePluginEnabled(normalizedPath) }
+                pluginActionWorkflowController.togglePlugin(normalizedPath)
             },
             onMovePluginUp = { normalizedPath ->
-                runInBackground { movePluginUp(normalizedPath) }
+                pluginActionWorkflowController.movePluginUp(normalizedPath)
             },
             onMovePluginDown = { normalizedPath ->
-                runInBackground { movePluginDown(normalizedPath) }
+                pluginActionWorkflowController.movePluginDown(normalizedPath)
             },
             onSelectGame = { gameId ->
                 selectedGameId = gameId
@@ -414,7 +426,7 @@ class MainActivity : ComponentActivity() {
                 runInBackground { applyModOrder(orderedModIds) }
             },
             onApplyPluginOrder = { orderedPluginPaths ->
-                runInBackground { applyPluginOrder(orderedPluginPaths) }
+                pluginActionWorkflowController.applyPluginOrder(orderedPluginPaths)
             },
             onOpenOverwriteFolder = {
                 runInBackground { openOverwriteFolderPanel() }
