@@ -31,7 +31,6 @@ import com.shonkware.droidmodloader.ui.FullscreenPanel
 import com.shonkware.droidmodloader.engine.overwrite.OverwriteEntry
 import android.os.Looper
 import java.util.concurrent.CountDownLatch
-import com.shonkware.droidmodloader.engine.install.InstallerGroupType
 import com.shonkware.droidmodloader.engine.repair.V050ArtifactRepairTool
 import com.shonkware.droidmodloader.engine.deploy.plan.DeploymentPreflightException
 import com.shonkware.droidmodloader.ui.workflow.OperationLogFormatter
@@ -44,6 +43,7 @@ import com.shonkware.droidmodloader.ui.workflow.PluginSyncWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.PluginActionWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.InstallerWorkflowController
 import com.shonkware.droidmodloader.engine.install.InstallerOptionSelectionHelper
+import com.shonkware.droidmodloader.ui.workflow.ProfileWorkflowController
 
 class MainActivity : ComponentActivity() {
 
@@ -197,6 +197,21 @@ class MainActivity : ComponentActivity() {
             finalizeInstallerInstall = { finalizePendingInstallerInstall() },
             cancelInstallerInstall = { cancelPendingInstallerInstall() },
             toggleInstallerOption = { optionId -> toggleInstallerOption(optionId) }
+        )
+    }
+
+    private val profileWorkflowController by lazy {
+        ProfileWorkflowController(
+            runInBackground = { task -> runInBackground(task) },
+            completeFirstSetup = { completeFirstSetup() },
+            createAdditionalProfile = { createAdditionalProfile() },
+            switchActiveProfile = { profileId -> switchActiveProfile(profileId) },
+            deleteProfile = { profileId -> deleteProfile(profileId) },
+            saveDashboardSettings = {
+                saveSelectedGameConfigFromUi()
+                saveActiveProfileFromDashboard()
+                refreshDashboard()
+            }
         )
     }
 
@@ -355,9 +370,7 @@ class MainActivity : ComponentActivity() {
             },
             onSaveSettings = {
                 runInBackground {
-                    saveSelectedGameConfigFromUi()
-                    saveActiveProfileFromDashboard()
-                    refreshDashboard()
+                    profileWorkflowController.saveSettings()
                 }
             },
             onShareLogs = {
@@ -371,10 +384,10 @@ class MainActivity : ComponentActivity() {
             onSetupTargetPathChanged = { setupTargetPathText = it },
             onSetupRealDeployChanged = { setupRealDeployEnabled = it },
             onCompleteSetup = {
-                runInBackground { completeFirstSetup() }
+                profileWorkflowController.completeSetup()
             },
             onSelectProfile = { profileId ->
-                runInBackground { switchActiveProfile(profileId) }
+                profileWorkflowController.switchProfile(profileId)
             },
             onNewProfileNameChanged = { newProfileNameText = it },
             onNewProfileGameChanged = { gameId ->
@@ -383,7 +396,7 @@ class MainActivity : ComponentActivity() {
             },
             onNewProfileRealDeployChanged = { newProfileRealDeployEnabled = it },
             onCreateAdditionalProfile = {
-                runInBackground { createAdditionalProfile() }
+                profileWorkflowController.createProfile()
             },
             onOpenProfileDialog = {
                 showProfileDialog = true
@@ -396,7 +409,7 @@ class MainActivity : ComponentActivity() {
                 pickTargetFolderLauncher.launch(null)
             },
             onDeleteProfile = { profileId ->
-                runInBackground { deleteProfile(profileId) }
+                profileWorkflowController.deleteProfile(profileId)
             },
             onToggleInstallerOption = { optionId ->
                 installerWorkflowController.toggleOption(optionId)
@@ -2184,19 +2197,13 @@ class MainActivity : ComponentActivity() {
             setupComplete = profiles.isNotEmpty()
 
             if (newActiveProfile != null) {
-                selectedGameId = newActiveProfile.gameId
-                targetPathText = newActiveProfile.targetDataPath
-                selectedTreeUriText = newActiveProfile.targetTreeUri ?: "No folder selected"
-                rootTargetPathText = newActiveProfile.targetRootPath
-                selectedRootTreeUriText = newActiveProfile.targetRootTreeUri ?: "No root folder selected"
-                realDeployEnabledState = newActiveProfile.realDeployEnabled
+                applyProfileConfigUiState(
+                    ProfileConfigUiMapper.fromProfile(newActiveProfile)
+                )
             } else {
-                selectedGameId = "No Game Selected"
-                targetPathText = ""
-                selectedTreeUriText = "No folder selected"
-                rootTargetPathText = ""
-                selectedRootTreeUriText = "No root folder selected"
-                realDeployEnabledState = false
+                applyProfileConfigUiState(
+                    ProfileConfigUiMapper.emptyState()
+                )
                 showProfileDialog = false
             }
 
