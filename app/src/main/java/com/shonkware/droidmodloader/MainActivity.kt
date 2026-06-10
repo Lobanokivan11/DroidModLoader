@@ -48,6 +48,7 @@ import com.shonkware.droidmodloader.ui.workflow.ModActionWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.ArchiveImportWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.FolderPickMode
 import com.shonkware.droidmodloader.ui.workflow.FolderPickerWorkflowController
+import com.shonkware.droidmodloader.ui.workflow.DeploymentActionWorkflowController
 
 class MainActivity : ComponentActivity() {
 
@@ -227,6 +228,15 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private val deploymentActionWorkflowController by lazy {
+        DeploymentActionWorkflowController(
+            runInBackground = { task -> runInBackground(task) },
+            runDeploy = { runDeployWorkflow() },
+            runForceFullRedeploy = { runForceFullRedeployWorkflow() },
+            buildDeploymentPlan = { runDeploymentPlanDebugSummary() },
+            buildFullRedeployPlan = { runFullRedeployPlanDebugSummary() }
+        )
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -336,7 +346,7 @@ class MainActivity : ComponentActivity() {
                 importZipLauncher.launch(arrayOf("*/*"))
             },
             onDeployMods = {
-                runInBackground { runDeployWorkflow() }
+                deploymentActionWorkflowController.deploy()
             },
             onWriteLoadOrderFiles = {
                 pluginActionWorkflowController.writeLoadOrderFiles()
@@ -478,13 +488,13 @@ class MainActivity : ComponentActivity() {
                 runInBackground { runResolvedDataGraphDebugSummary() }
             },
             onBuildDeploymentPlan = {
-                runInBackground { runDeploymentPlanDebugSummary() }
+                deploymentActionWorkflowController.buildDeployPlan()
             },
             onShowArchiveLibrarySummary = {
                 archiveImportWorkflowController.requestArchiveLibrarySummary()
             },
             onBuildFullRedeployPlan = {
-                runInBackground { runFullRedeployPlanDebugSummary() }
+                deploymentActionWorkflowController.buildFullRedeployPlan()
             },
             onViewLastDeployJournal = {
                 runInBackground { runLastDeployJournalDebugSummary() }
@@ -508,7 +518,7 @@ class MainActivity : ComponentActivity() {
             },
             onConfirmForceFullRedeploy = {
                 showForceFullRedeployConfirmDialog = false
-                runInBackground { runForceFullRedeployWorkflow() }
+                deploymentActionWorkflowController.forceFullRedeploy()
             },
             onCancelForceFullRedeploy = {
                 showForceFullRedeployConfirmDialog = false
