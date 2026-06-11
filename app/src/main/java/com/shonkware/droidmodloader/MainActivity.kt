@@ -52,6 +52,7 @@ import com.shonkware.droidmodloader.ui.workflow.DeploymentActionWorkflowControll
 import com.shonkware.droidmodloader.ui.workflow.DeployRecoveryWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.DeveloperToolsWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.OverwriteActionWorkflowController
+import com.shonkware.droidmodloader.ui.workflow.FullscreenPanelActionWorkflowController
 
 class MainActivity : ComponentActivity() {
 
@@ -263,6 +264,25 @@ class MainActivity : ComponentActivity() {
             },
             closeOverwriteFolderPanel = {
                 showOverwriteDialog = false
+            }
+        )
+    }
+    private val fullscreenPanelActionWorkflowController by lazy {
+        FullscreenPanelActionWorkflowController(
+            openModsPanel = {
+                fullscreenPanel = FullscreenPanel.MODS
+            },
+            openPluginsPanel = {
+                fullscreenPanel = FullscreenPanel.PLUGINS
+            },
+            closePanel = {
+                fullscreenPanel = FullscreenPanel.NONE
+            },
+            applyModOrder = { orderedModIds ->
+                modActionWorkflowController.applyModOrder(orderedModIds)
+            },
+            applyPluginOrder = { orderedPluginPaths ->
+                pluginActionWorkflowController.applyPluginOrder(orderedPluginPaths)
             }
         )
     }
@@ -490,19 +510,19 @@ class MainActivity : ComponentActivity() {
                 toggleSecondScreenPluginDisplay()
             },
             onOpenModsFullscreen = {
-                fullscreenPanel = FullscreenPanel.MODS
+                fullscreenPanelActionWorkflowController.openModsFullscreen()
             },
             onOpenPluginsFullscreen = {
-                fullscreenPanel = FullscreenPanel.PLUGINS
+                fullscreenPanelActionWorkflowController.openPluginsFullscreen()
             },
             onCloseFullscreenPanel = {
-                fullscreenPanel = FullscreenPanel.NONE
+                fullscreenPanelActionWorkflowController.closeFullscreenPanel()
             },
             onApplyModOrder = { orderedModIds ->
-                modActionWorkflowController.applyModOrder(orderedModIds)
+                fullscreenPanelActionWorkflowController.applyModOrder(orderedModIds)
             },
             onApplyPluginOrder = { orderedPluginPaths ->
-                pluginActionWorkflowController.applyPluginOrder(orderedPluginPaths)
+                fullscreenPanelActionWorkflowController.applyPluginOrder(orderedPluginPaths)
             },
             onOpenOverwriteFolder = {
                 overwriteActionWorkflowController.openOverwriteFolder()
