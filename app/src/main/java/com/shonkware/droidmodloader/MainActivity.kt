@@ -48,6 +48,7 @@ import com.shonkware.droidmodloader.engine.io.ProfileStoragePaths
 import com.shonkware.droidmodloader.ui.workflow.ProfileWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.ModActionWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.ArchiveImportWorkflowController
+import com.shonkware.droidmodloader.ui.workflow.ArchiveImportExecutionWorkflow
 import com.shonkware.droidmodloader.ui.workflow.FolderPickMode
 import com.shonkware.droidmodloader.ui.workflow.FolderPickerWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.DeploymentActionWorkflowController
@@ -193,7 +194,7 @@ class MainActivity : ComponentActivity() {
         ArchiveImportWorkflowController(
             appendLog = { message -> appendLog(message) },
             runInBackground = { task -> runInBackground(task) },
-            handleImportedArchive = { uri -> handleImportedArchive(uri) },
+            handleImportedArchive = { uri -> archiveImportExecutionWorkflow.importArchive(uri) },
             showArchiveLibrarySummary = { runArchiveLibraryDebugSummary() }
         )
     }
@@ -303,6 +304,33 @@ class MainActivity : ComponentActivity() {
             externalFilesDirProvider = { getExternalFilesDir(null) },
             profileInternalDirProvider = { profileStoragePaths.getProfileInternalDir() },
             appendError = { message -> appendError(message) }
+        )
+    }
+
+    private val archiveImportExecutionWorkflow by lazy {
+        ArchiveImportExecutionWorkflow(
+            operationInProgressProvider = { operationInProgress },
+            beginOperation = { message -> beginOperation(message) },
+            createEngine = { createModEngineForWorkflows() },
+            queryDisplayName = { uri -> queryDisplayName(uri) },
+            archiveImportFileStore = archiveImportFileStore,
+            showInstallerChoices = { prepared, archiveRecordId ->
+                runOnUiThread {
+                    pendingArchiveInstall = prepared
+                    pendingInstallerArchiveRecordId = archiveRecordId
+                    pendingInstallerSelectedOptionIds = prepared.plan.defaultSelectedOptionIds
+                    showInstallerDialog = true
+                    installerDialogFullscreen = false
+                }
+            },
+            appendLog = { message -> appendLog(message) },
+            finishOperation = { message -> finishOperation(message) },
+            failOperation = { message, throwable -> failOperation(message, throwable) },
+            syncPluginsFromCurrentState = { engine -> syncPluginsFromCurrentState(engine) },
+            appendInstalledModRoutingSummary = { engine, mod ->
+                appendInstalledModRoutingSummary(engine, mod)
+            },
+            refreshDashboard = { refreshDashboard() }
         )
     }
 
@@ -939,106 +967,6 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private fun handleImportedArchive(uri: Uri) {
-        if (operationInProgress) {
-            appendLog("Ignoring import request: operation already in progress.")
-            return
-        }
-
-        beginOperation("Importing archive...")
-
-        val engine = createModEngineForWorkflows()
-        if (engine == null) {
-            failOperation("Import archive failed: engine could not be created.")
-            return
-        }
-
-        val fileName = queryDisplayName(uri) ?: "imported_mod"
-        val sanitizedName = fileName.replace(Regex("""[^\w.\- ]"""), "_")
-
-        try {
-            val archiveLibraryFile = archiveImportFileStore.copyUriToArchiveLibraryFile(
-                uri = uri,
-                displayName = sanitizedName
-            )
-
-            val archiveRecord = engine.registerDownloadedArchive(
-                archiveFile = archiveLibraryFile,
-                originalDisplayName = fileName,
-                sourceUri = uri.toString()
-            )
-
-            appendLog("Archive saved to library: ${archiveRecord.fileName}")
-            appendLog("Archive format: ${archiveRecord.archiveFormat}")
-            appendLog("Archive size: ${archiveRecord.sizeBytes} bytes")
-            appendLog("Archive record ID: ${archiveRecord.archiveId}")
-            appendLog("About to install imported archive using engine...")
-
-            val existingMods = engine.getInstalledModsFromFolders()
-            val nextPriority = if (existingMods.isEmpty()) {
-                1
-            } else {
-                existingMods.maxOf { it.priority } + 1
-            }
-
-            val prepared = engine.prepareArchiveInstall(archiveLibraryFile)
-
-            if (prepared.plan.requiresUserChoice) {
-                runOnUiThread {
-                    pendingArchiveInstall = prepared
-                    pendingInstallerArchiveRecordId = archiveRecord.archiveId
-                    pendingInstallerSelectedOptionIds = prepared.plan.defaultSelectedOptionIds
-                    showInstallerDialog = true
-                    installerDialogFullscreen = false
-                }
-
-                appendLog("Installer choices required: ${prepared.plan.installerType}")
-                appendLog("Pending installer archive record ID: ${archiveRecord.archiveId}")
-                prepared.plan.warnings.forEach { appendLog("INSTALLER WARNING: $it") }
-
-                finishOperation("Choose installer options.")
-                return
-            }
-
-            val installedMod = engine.finalizePreparedArchiveInstall(
-                prepared = prepared,
-                selectedOptionIds = prepared.plan.defaultSelectedOptionIds,
-                priority = nextPriority,
-                sourceType = "imported_archive"
-            )
-
-            engine.markDownloadedArchiveInstalled(
-                archiveId = archiveRecord.archiveId,
-                installedModId = installedMod.id
-            )
-
-            appendLog("Archive install returned successfully.")
-            appendLog("Archive record marked installed: ${archiveRecord.archiveId}")
-
-            val currentMods = engine.getCurrentMods()
-                .filterNot { it.id == installedMod.id }
-                .sortedBy { it.priority }
-
-            val updatedMods = currentMods + installedMod.copy(priority = currentMods.size + 1)
-            engine.saveCurrentMods(updatedMods)
-
-            syncPluginsFromCurrentState(engine)
-
-            appendLog("Installed imported mod: $installedMod")
-            appendInstalledModRoutingSummary(engine, installedMod)
-            appendLog("Saved installed mod count after import: ${updatedMods.size}")
-            appendLog("Plugins refreshed automatically.")
-            appendLog("RESULT: PASS")
-            finishOperation("Archive imported successfully.")
-        } catch (t: Throwable) {
-            appendLog("CRASH TYPE: ${t::class.java.name}")
-            appendLog("RESULT: FAIL")
-            failOperation("Import archive failed: ${t.message}", t)
-        }
-
-        refreshDashboard()
-        appendLog("----- Import Archive Workflow End -----")
-    }
     private fun normalizePriorities(mods: List<Mod>): List<Mod> {
         return mods.mapIndexed { index, mod ->
             mod.copy(priority = index + 1)
