@@ -32,7 +32,6 @@ import com.shonkware.droidmodloader.engine.overwrite.OverwriteEntry
 import android.os.Looper
 import java.util.concurrent.CountDownLatch
 import com.shonkware.droidmodloader.engine.repair.V050ArtifactRepairTool
-import com.shonkware.droidmodloader.engine.deploy.plan.DeploymentPreflightException
 import com.shonkware.droidmodloader.ui.workflow.OperationLogFormatter
 import com.shonkware.droidmodloader.ui.workflow.OperationStatusController
 import com.shonkware.droidmodloader.ui.workflow.DeploymentConfigUiMapper
@@ -63,6 +62,8 @@ import com.shonkware.droidmodloader.ui.workflow.ArchiveImportExecutionWorkflow
 import com.shonkware.droidmodloader.ui.workflow.FolderPickMode
 import com.shonkware.droidmodloader.ui.workflow.FolderPickerWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.DeploymentActionWorkflowController
+import com.shonkware.droidmodloader.ui.workflow.DeploymentExecutionEngineAdapter
+import com.shonkware.droidmodloader.ui.workflow.DeploymentExecutionWorkflow
 import com.shonkware.droidmodloader.ui.workflow.DeployRecoveryWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.DeveloperToolsWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.OverwriteActionWorkflowController
@@ -455,11 +456,43 @@ class MainActivity : ComponentActivity() {
             appendLog = { message -> appendLog(message) }
         )
     }
+    private val deploymentExecutionWorkflow by lazy {
+        DeploymentExecutionWorkflow(
+            isOperationInProgress = { operationInProgress },
+            selectedGameIdProvider = { selectedGameId },
+            simulatedDataTargetPathProvider = {
+                File(
+                    getExternalFilesDir(null),
+                    "deploy_target/profiles/${profileStoragePaths.getActiveProfileStorageKey()}/$selectedGameId/Data"
+                ).absolutePath
+            },
+            saveActiveProfile = {
+                profileManagementWorkflow.saveActiveProfileFromDashboard()
+            },
+            saveSelectedGameConfig = {
+                saveSelectedGameConfigFromUi()
+            },
+            createEngine = {
+                createModEngineForWorkflows()?.let { engine ->
+                    DeploymentExecutionEngineAdapter(
+                        engine = engine,
+                        syncPluginsAction = { syncPluginsFromCurrentState(engine) }
+                    )
+                }
+            },
+            beginOperation = { message -> beginOperation(message) },
+            finishOperation = { message -> finishOperation(message) },
+            failOperation = { message, throwable -> failOperation(message, throwable) },
+            appendLog = { message -> appendLog(message) },
+            appendError = { message, throwable -> appendError(message, throwable) },
+            refreshDashboard = { refreshDashboard() }
+        )
+    }
     private val deploymentActionWorkflowController by lazy {
         DeploymentActionWorkflowController(
             runInBackground = { task -> runInBackground(task) },
-            runDeploy = { runDeployWorkflow() },
-            runForceFullRedeploy = { runForceFullRedeployWorkflow() },
+            runDeploy = { deploymentExecutionWorkflow.deploy() },
+            runForceFullRedeploy = { deploymentExecutionWorkflow.forceFullRedeploy() },
             buildDeploymentPlan = { runDeploymentPlanDebugSummary() },
             buildFullRedeployPlan = { runFullRedeployPlanDebugSummary() }
         )
@@ -979,17 +1012,6 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-    private fun appendDeploymentResultBlock(
-        title: String,
-        result: com.shonkware.droidmodloader.engine.deploy.DeploymentResult
-    ) {
-        OperationLogFormatter.deploymentResultBlockLines(
-            title = title,
-            result = result
-        ).forEach { line ->
-            appendLog(line)
-        }
-    }
     private fun beginOperation(text: String) {
         val status = operationStatusController.begin(text)
 
@@ -1258,223 +1280,6 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
         }
     }
-    private fun runDeployWorkflow() {
-        if (operationInProgress) {
-            appendLog("Ignoring deploy request: operation already in progress.")
-            return
-        }
-
-        beginOperation("Deploying mods...")
-
-        try {
-            profileManagementWorkflow.saveActiveProfileFromDashboard()
-            saveSelectedGameConfigFromUi()
-
-            val engine = createModEngineForWorkflows() ?: return
-
-            val config = engine.getGameDeploymentConfig(selectedGameId)
-            appendLog("Selected game: $selectedGameId")
-            appendLog("Active config: $config")
-            appendLog(engine.getDeploymentTargetDebugSummary(selectedGameId))
-            val rootRecordCount = engine.getCurrentRootWinningRecords().size
-            val rootTargetSelected =
-                config != null &&
-                        config.realDeployEnabled &&
-                        (
-                                !config.targetRootTreeUri.isNullOrBlank() ||
-                                        engine.validateTargetDataPath(config.targetRootPath)
-                                )
-
-            if (rootRecordCount > 0) {
-                appendLog("Root-scope deployable file count: $rootRecordCount")
-            }
-
-            if (rootRecordCount > 0 && config?.realDeployEnabled == true && !rootTargetSelected) {
-                appendLog(
-                    "WARNING: Root-scope files were detected, but no game root folder is selected. " +
-                            "Pick the game root folder to deploy files like SKSE/NVSE loaders, DLLs, ENB files, or other root-level files."
-                )
-            }
-
-            val result = engine.deployForGame(selectedGameId)
-
-            val usingRealDeploy = config != null && config.realDeployEnabled
-            val usingTreeUri = usingRealDeploy && !config.targetTreeUri.isNullOrBlank()
-            val usingRealPath = usingRealDeploy && engine.validateTargetDataPath(config.targetDataPath)
-
-            val effectiveMode = when {
-                usingTreeUri -> "Tree URI"
-                usingRealPath -> "Real Path"
-                else -> "Simulated"
-            }
-
-            val effectiveTarget = when {
-                usingTreeUri -> config?.targetTreeUri ?: "none"
-                usingRealPath -> config?.targetDataPath ?: "none"
-                else -> File(
-                    getExternalFilesDir(null),
-                    "deploy_target/profiles/${profileStoragePaths.getActiveProfileStorageKey()}/$selectedGameId/Data"
-                ).absolutePath
-            }
-
-            appendLog("Deploy mode: $effectiveMode")
-            appendLog("Data deploy target: $effectiveTarget")
-
-            val rootTarget = when {
-                config != null &&
-                        config.realDeployEnabled &&
-                        !config.targetRootTreeUri.isNullOrBlank() -> {
-                    "TREE_URI:${config.targetRootTreeUri}"
-                }
-
-                config != null &&
-                        config.realDeployEnabled &&
-                        engine.validateTargetDataPath(config.targetRootPath) -> {
-                    config.targetRootPath
-                }
-
-                else -> {
-                    "Simulated game root"
-                }
-            }
-
-            appendLog("Game root deploy target: $rootTarget")
-
-            appendDeploymentResultBlock(
-                title = "Data deploy result",
-                result = result.dataResult
-            )
-
-            appendDeploymentResultBlock(
-                title = "Game root deploy result",
-                result = result.rootResult
-            )
-
-            appendLog("Combined deploy result:")
-            appendLog("  Adds: ${result.addCount}")
-            appendLog("  Removes: ${result.removeCount}")
-            appendLog("  Updates: ${result.updateCount}")
-            appendLog("  Backups created: ${result.dataResult.backupCount + result.rootResult.backupCount}")
-            appendLog("  Backups restored: ${result.dataResult.restoreCount + result.rootResult.restoreCount}")
-            appendLog("  Protected conflicts: ${result.dataResult.protectedConflictCount + result.rootResult.protectedConflictCount}")
-            appendLog("  Final file count: ${result.finalRecordCount}")
-
-            appendLog("----- Last Deploy Journal -----")
-            engine.getDeploymentJournalDebugSummary(selectedGameId).lineSequence().forEach { line ->
-                appendLog(line)
-            }
-            appendLog("----- Last Deploy Journal End -----")
-
-            appendLog("RESULT: PASS")
-
-            finishOperation("Deploy succeeded ($effectiveMode).")
-        } catch (e: DeploymentPreflightException) {
-            appendError("Deploy blocked by preflight check.", e)
-
-            appendLog("----- Deploy Readiness Check Failed -----")
-            e.result.toDebugSummary().lineSequence().forEach { line ->
-                appendLog(line)
-            }
-            appendLog("----- Deploy Readiness Check Failed End -----")
-            appendLog("No files were changed.")
-            appendLog("RESULT: FAIL")
-
-            failOperation("Deploy blocked by readiness check.", e)
-        } catch (e: Exception) {
-            appendError("Deploy workflow failed: ${e.message}", e)
-            appendLog("RESULT: FAIL")
-            failOperation("Deploy failed: ${e.message}", e)
-        }
-
-        refreshDashboard()
-        appendLog("----- Deploy Workflow End -----")
-    }
-
-    private fun runForceFullRedeployWorkflow() {
-        if (operationInProgress) {
-            appendLog("Ignoring full redeploy request: operation already in progress.")
-            return
-        }
-
-        beginOperation("Force full redeploy...")
-
-        try {
-            profileManagementWorkflow.saveActiveProfileFromDashboard()
-            saveSelectedGameConfigFromUi()
-
-            val engine = createModEngineForWorkflows()
-                ?: throw IllegalStateException("Could not create engine for active profile.")
-
-            val config = engine.getGameDeploymentConfig(selectedGameId)
-
-            appendLog("----- Force Full Redeploy Start -----")
-            appendLog("Selected game: $selectedGameId")
-            appendLog("Active config: $config")
-            appendLog(engine.getDeploymentTargetDebugSummary(selectedGameId))
-
-            appendLog("----- Full Redeploy Plan Before Execution -----")
-            engine.buildFullRedeployPlanDebugSummary(selectedGameId)
-                .lineSequence()
-                .forEach { line ->
-                    appendLog(line)
-                }
-            appendLog("----- Full Redeploy Plan Before Execution End -----")
-
-            val result = engine.forceFullRedeployForGame(selectedGameId)
-
-            appendDeploymentResultBlock(
-                title = "Data full redeploy result",
-                result = result.dataResult
-            )
-
-            appendDeploymentResultBlock(
-                title = "Game Root full redeploy result",
-                result = result.rootResult
-            )
-
-            appendLog("Combined full redeploy result:")
-            appendLog("  Adds: ${result.addCount}")
-            appendLog("  Removes: ${result.removeCount}")
-            appendLog("  Updates: ${result.updateCount}")
-            appendLog("  Backups created: ${result.dataResult.backupCount + result.rootResult.backupCount}")
-            appendLog("  Backups restored: ${result.dataResult.restoreCount + result.rootResult.restoreCount}")
-            appendLog("  Protected conflicts: ${result.dataResult.protectedConflictCount + result.rootResult.protectedConflictCount}")
-            appendLog("  Final file count: ${result.finalRecordCount}")
-
-            appendLog("----- Last Deploy Journal -----")
-            engine.getDeploymentJournalDebugSummary(selectedGameId)
-                .lineSequence()
-                .forEach { line ->
-                    appendLog(line)
-                }
-            appendLog("----- Last Deploy Journal End -----")
-
-            syncPluginsFromCurrentState(engine)
-
-            appendLog("RESULT: PASS")
-            finishOperation("Full redeploy succeeded.")
-        } catch (e: DeploymentPreflightException) {
-            appendError("Full redeploy blocked by preflight check.", e)
-
-            appendLog("----- Deploy Readiness Check Failed -----")
-            e.result.toDebugSummary().lineSequence().forEach { line ->
-                appendLog(line)
-            }
-            appendLog("----- Deploy Readiness Check Failed End -----")
-            appendLog("No files were changed.")
-            appendLog("RESULT: FAIL")
-
-            failOperation("Full redeploy blocked by readiness check.", e)
-        } catch (e: Exception) {
-            appendError("Full redeploy failed: ${e.message}", e)
-            appendLog("RESULT: FAIL")
-            failOperation("Full redeploy failed: ${e.message}", e)
-        }
-
-        refreshDashboard()
-        appendLog("----- Force Full Redeploy End -----")
-    }
-
     private fun syncPluginsFromCurrentState(engine: ModEngine) {
         appendLog("Scanning plugins from current mod state and target Data folder...")
 
