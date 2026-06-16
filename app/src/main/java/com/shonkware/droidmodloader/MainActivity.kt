@@ -47,6 +47,10 @@ import com.shonkware.droidmodloader.engine.io.ArchiveImportFileStore
 import com.shonkware.droidmodloader.engine.io.ProfileStoragePaths
 import com.shonkware.droidmodloader.engine.io.LegacyProfileStorageMigrator
 import com.shonkware.droidmodloader.ui.workflow.ProfileWorkflowController
+import com.shonkware.droidmodloader.ui.workflow.ProfileManagementWorkflow
+import com.shonkware.droidmodloader.ui.workflow.FirstSetupInput
+import com.shonkware.droidmodloader.ui.workflow.AdditionalProfileInput
+import com.shonkware.droidmodloader.ui.workflow.DashboardProfileInput
 import com.shonkware.droidmodloader.ui.workflow.ModActionWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.ArchiveImportWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.ArchiveImportExecutionWorkflow
@@ -164,15 +168,146 @@ class MainActivity : ComponentActivity() {
     private val profileWorkflowController by lazy {
         ProfileWorkflowController(
             runInBackground = { task -> runInBackground(task) },
-            completeFirstSetup = { completeFirstSetup() },
-            createAdditionalProfile = { createAdditionalProfile() },
-            switchActiveProfile = { profileId -> switchActiveProfile(profileId) },
-            deleteProfile = { profileId -> deleteProfile(profileId) },
-            saveDashboardSettings = {
-                saveSelectedGameConfigFromUi()
-                saveActiveProfileFromDashboard()
-                refreshDashboard()
-            }
+            completeFirstSetup = { profileManagementWorkflow.completeFirstSetup() },
+            createAdditionalProfile = { profileManagementWorkflow.createAdditionalProfile() },
+            switchActiveProfile = { profileId ->
+                profileManagementWorkflow.switchActiveProfile(profileId)
+            },
+            deleteProfile = { profileId -> profileManagementWorkflow.deleteProfile(profileId) },
+            saveDashboardSettings = { profileManagementWorkflow.saveDashboardSettings() }
+        )
+    }
+    private val profileManagementWorkflow by lazy {
+        ProfileManagementWorkflow(
+            repositoryProvider = { createProfileRepository() },
+            gameDisplayNameProvider = { gameId -> getGameDisplayName(gameId) },
+            firstSetupInputProvider = {
+                FirstSetupInput(
+                    profileNameText = profileNameText,
+                    gameId = setupGameId,
+                    realDeployEnabled = setupRealDeployEnabled
+                )
+            },
+            additionalProfileInputProvider = {
+                AdditionalProfileInput(
+                    profileNameText = newProfileNameText,
+                    gameId = newProfileGameId,
+                    targetTreeUriText = newProfileTreeUriText,
+                    realDeployEnabled = newProfileRealDeployEnabled
+                )
+            },
+            activeProfileIdProvider = { activeProfileId },
+            dashboardProfileInputProvider = {
+                DashboardProfileInput(
+                    targetPathText = targetPathText,
+                    selectedTreeUriText = selectedTreeUriText,
+                    rootTargetPathText = rootTargetPathText,
+                    selectedRootTreeUriText = selectedRootTreeUriText,
+                    realDeployEnabled = realDeployEnabledState
+                )
+            },
+            applyFirstSetupUiState = { profiles, profile ->
+                runOnUiThread {
+                    setupComplete = true
+                    activeProfileId = profile.profileId
+                    activeProfileName = profile.profileName
+                    profileOptions = profiles
+
+                    applyProfileConfigUiState(
+                        ProfileConfigUiMapper.fromProfile(profile)
+                    )
+                }
+            },
+            applyCreatedProfileUiState = { profiles, profile ->
+                runOnUiThreadBlocking {
+                    profileOptions = profiles
+                    activeProfileId = profile.profileId
+                    activeProfileName = profile.profileName
+                    applyProfileConfigUiState(
+                        ProfileConfigUiMapper.fromProfile(profile)
+                    )
+                    visibleMods = emptyList()
+                    visiblePlugins = emptyList()
+                    visibleModContentIndexes = emptyMap()
+
+                    newProfileNameText = ""
+                    newProfileTreeUriText = DeploymentConfigUiMapper.NO_DATA_FOLDER_SELECTED
+                    newProfileRealDeployEnabled = false
+                    showProfileDialog = false
+                }
+            },
+            applySwitchedProfileUiState = { profile ->
+                runOnUiThreadBlocking {
+                    activeProfileId = profile.profileId
+                    activeProfileName = profile.profileName
+                    applyProfileConfigUiState(
+                        ProfileConfigUiMapper.fromProfile(profile)
+                    )
+                    visibleMods = emptyList()
+                    visiblePlugins = emptyList()
+                    visibleModContentIndexes = emptyMap()
+                }
+            },
+            applySavedProfileUiState = { profiles, updatedProfile ->
+                runOnUiThread {
+                    profileOptions = profiles
+                    activeProfileName = updatedProfile.profileName
+                }
+            },
+            applyDeletedProfileUiStateAsync = { profiles, newActiveProfile ->
+                runOnUiThread {
+                    profileOptions = profiles
+                    activeProfileId = newActiveProfile?.profileId
+                    activeProfileName = newActiveProfile?.profileName ?: "No profile"
+                    setupComplete = profiles.isNotEmpty()
+
+                    if (newActiveProfile != null) {
+                        applyProfileConfigUiState(
+                            ProfileConfigUiMapper.fromProfile(newActiveProfile)
+                        )
+                    } else {
+                        applyProfileConfigUiState(
+                            ProfileConfigUiMapper.emptyState()
+                        )
+                        visiblePlugins = emptyList()
+                    }
+                }
+            },
+            applyDeletedProfileUiStateBlocking = { profiles, newActiveProfile ->
+                runOnUiThreadBlocking {
+                    profileOptions = profiles
+                    activeProfileId = newActiveProfile?.profileId
+                    activeProfileName = newActiveProfile?.profileName ?: "No profile"
+                    setupComplete = profiles.isNotEmpty()
+
+                    if (newActiveProfile != null) {
+                        applyProfileConfigUiState(
+                            ProfileConfigUiMapper.fromProfile(newActiveProfile)
+                        )
+                    } else {
+                        applyProfileConfigUiState(
+                            ProfileConfigUiMapper.emptyState()
+                        )
+                        showProfileDialog = false
+                    }
+
+                    visibleMods = emptyList()
+                    visiblePlugins = emptyList()
+                    visibleModContentIndexes = emptyMap()
+                }
+            },
+            saveSelectedGameConfigFromUi = { saveSelectedGameConfigFromUi() },
+            loadSelectedGameConfigIntoUi = { loadSelectedGameConfigIntoUi() },
+            syncPluginsFromCurrentState = {
+                val engine = createModEngineForWorkflows()
+                if (engine != null) {
+                    syncPluginsFromCurrentState(engine)
+                }
+            },
+            refreshDashboard = { refreshDashboard() },
+            appendLog = { message -> appendLog(message) },
+            appendError = { message -> appendError(message) },
+            updateLastOperationStatus = { status -> updateLastOperationStatus(status) }
         )
     }
     private val modActionWorkflowController by lazy {
@@ -1012,7 +1147,7 @@ class MainActivity : ComponentActivity() {
         }
 
         saveSelectedGameConfigFromUi()
-        saveActiveProfileFromDashboard()
+        profileManagementWorkflow.saveActiveProfileFromDashboard()
 
         ensureDataBaselineIfMissing("target folder selected")
         refreshDashboard()
@@ -1026,7 +1161,7 @@ class MainActivity : ComponentActivity() {
         }
 
         saveSelectedGameConfigFromUi()
-        saveActiveProfileFromDashboard()
+        profileManagementWorkflow.saveActiveProfileFromDashboard()
         refreshDashboard()
 
         appendLog("Saved picked game root folder URI for $selectedGameId")
@@ -1185,7 +1320,7 @@ class MainActivity : ComponentActivity() {
         beginOperation("Deploying mods...")
 
         try {
-            saveActiveProfileFromDashboard()
+            profileManagementWorkflow.saveActiveProfileFromDashboard()
             saveSelectedGameConfigFromUi()
 
             val engine = createModEngineForWorkflows() ?: return
@@ -1317,7 +1452,7 @@ class MainActivity : ComponentActivity() {
         beginOperation("Force full redeploy...")
 
         try {
-            saveActiveProfileFromDashboard()
+            profileManagementWorkflow.saveActiveProfileFromDashboard()
             saveSelectedGameConfigFromUi()
 
             val engine = createModEngineForWorkflows()
@@ -1731,267 +1866,6 @@ class MainActivity : ComponentActivity() {
                     "targetTreeUri=$selectedTreeUriText"
         )
     }
-
-    private fun completeFirstSetup() {
-        val repo = createProfileRepository() ?: return
-
-        val profileId = "${setupGameId}_${System.currentTimeMillis()}"
-        val cleanProfileName = profileNameText.trim().ifBlank { "Default" }
-
-        val profile = GameProfile(
-            profileId = profileId,
-            profileName = cleanProfileName,
-            gameId = setupGameId,
-            gameDisplayName = getGameDisplayName(setupGameId),
-            targetDataPath = "",
-            targetTreeUri = null,
-            targetRootPath = "",
-            targetRootTreeUri = null,
-            realDeployEnabled = setupRealDeployEnabled,
-            iniPresetId = null
-        )
-
-        val existingProfiles = repo.loadProfiles().toMutableList()
-        existingProfiles.add(profile)
-
-        repo.saveProfiles(existingProfiles)
-        repo.saveSetupState(
-            AppSetupState(
-                setupComplete = true,
-                activeProfileId = profileId
-            )
-        )
-
-        runOnUiThread {
-            setupComplete = true
-            activeProfileId = profileId
-            activeProfileName = profile.profileName
-            profileOptions = existingProfiles
-
-            applyProfileConfigUiState(
-                ProfileConfigUiMapper.fromProfile(profile)
-            )
-        }
-
-        saveSelectedGameConfigFromUi()
-
-        appendLog("Created first profile: $profile")
-        updateLastOperationStatus("Setup complete.")
-        refreshDashboard()
-    }
-    private fun createAdditionalProfile() {
-        val repo = createProfileRepository() ?: return
-
-        val cleanProfileName = newProfileNameText.trim().ifBlank {
-            "${getGameDisplayName(newProfileGameId)} Profile"
-        }
-
-        val profileId = "${newProfileGameId}_${System.currentTimeMillis()}"
-
-        val profile = GameProfile(
-            profileId = profileId,
-            profileName = cleanProfileName,
-            gameId = newProfileGameId,
-            gameDisplayName = getGameDisplayName(newProfileGameId),
-            targetDataPath = "",
-            targetRootPath = "",
-            targetRootTreeUri = null,
-            targetTreeUri = ProfileConfigUiMapper.dataTreeUriFromText(newProfileTreeUriText),
-            realDeployEnabled = newProfileRealDeployEnabled,
-            iniPresetId = null
-        )
-
-        val profiles = repo.loadProfiles().toMutableList()
-        profiles.add(profile)
-        repo.saveProfiles(profiles)
-        repo.saveSetupState(
-            AppSetupState(
-                setupComplete = true,
-                activeProfileId = profile.profileId
-            )
-        )
-
-        runOnUiThreadBlocking {
-            profileOptions = profiles
-            activeProfileId = profile.profileId
-            activeProfileName = profile.profileName
-            applyProfileConfigUiState(
-                ProfileConfigUiMapper.fromProfile(profile)
-            )
-            visibleMods = emptyList()
-            visiblePlugins = emptyList()
-            visibleModContentIndexes = emptyMap()
-
-            newProfileNameText = ""
-            newProfileTreeUriText = DeploymentConfigUiMapper.NO_DATA_FOLDER_SELECTED
-            newProfileRealDeployEnabled = false
-            showProfileDialog = false
-        }
-
-        saveSelectedGameConfigFromUi()
-
-        val engine = createModEngineForWorkflows()
-        if (engine != null) {
-            syncPluginsFromCurrentState(engine)
-        }
-
-        refreshDashboard()
-
-        appendLog("Created and switched to profile: $profile")
-        updateLastOperationStatus("Profile created and selected: ${profile.profileName}")
-    }
-    private fun switchActiveProfile(profileId: String) {
-        val repo = createProfileRepository() ?: return
-        val profiles = repo.loadProfiles()
-        val profile = profiles.firstOrNull { it.profileId == profileId }
-
-        if (profile == null) {
-            appendError("Could not switch profile: profile not found: $profileId")
-            return
-        }
-
-        saveActiveProfileFromDashboard()
-
-        repo.saveSetupState(
-            AppSetupState(
-                setupComplete = true,
-                activeProfileId = profile.profileId
-            )
-        )
-
-        runOnUiThreadBlocking {
-            activeProfileId = profile.profileId
-            activeProfileName = profile.profileName
-            applyProfileConfigUiState(
-                ProfileConfigUiMapper.fromProfile(profile)
-            )
-            visibleMods = emptyList()
-            visiblePlugins = emptyList()
-            visibleModContentIndexes = emptyMap()
-        }
-
-        loadSelectedGameConfigIntoUi()
-
-        val engine = createModEngineForWorkflows()
-        if (engine != null) {
-            syncPluginsFromCurrentState(engine)
-        }
-
-        refreshDashboard()
-
-        appendLog("Switched active profile: $profile")
-        updateLastOperationStatus("Switched profile: ${profile.profileName}")
-    }
-    private fun saveActiveProfileFromDashboard() {
-        val repo = createProfileRepository() ?: return
-        val currentProfileId = activeProfileId
-
-        if (currentProfileId == null) {
-            appendError("Cannot save active profile: no active profile.")
-            return
-        }
-
-        val profiles = repo.loadProfiles().toMutableList()
-        val index = profiles.indexOfFirst { it.profileId == currentProfileId }
-
-        if (index == -1) {
-            appendError("Active profile not found: $currentProfileId")
-            return
-        }
-
-        val oldProfile = profiles[index]
-        val updatedProfile = ProfileConfigUiMapper.updatedProfileFromDashboard(
-            profile = oldProfile,
-            displayName = getGameDisplayName(oldProfile.gameId),
-            targetPathText = targetPathText,
-            selectedTreeUriText = selectedTreeUriText,
-            rootTargetPathText = rootTargetPathText,
-            selectedRootTreeUriText = selectedRootTreeUriText,
-            realDeployEnabled = realDeployEnabledState
-        )
-
-        profiles[index] = updatedProfile
-        repo.saveProfiles(profiles)
-
-        runOnUiThread {
-            profileOptions = profiles
-            activeProfileName = updatedProfile.profileName
-        }
-
-        appendLog("Saved active profile: $updatedProfile")
-    }
-    private fun deleteProfile(profileId: String) {
-        val repo = createProfileRepository() ?: return
-
-        val profiles = repo.loadProfiles().toMutableList()
-        val profileToDelete = profiles.firstOrNull { it.profileId == profileId }
-
-        if (profileToDelete == null) {
-            appendError("Profile not found: $profileId")
-            return
-        }
-
-        profiles.removeAll { it.profileId == profileId }
-        repo.saveProfiles(profiles)
-
-        val newActiveProfile = if (activeProfileId == profileId) {
-            profiles.firstOrNull()
-        } else {
-            profiles.firstOrNull { it.profileId == activeProfileId }
-        }
-
-        repo.saveSetupState(
-            AppSetupState(
-                setupComplete = profiles.isNotEmpty(),
-                activeProfileId = newActiveProfile?.profileId
-            )
-        )
-
-        runOnUiThread {
-            profileOptions = profiles
-            activeProfileId = newActiveProfile?.profileId
-            activeProfileName = newActiveProfile?.profileName ?: "No profile"
-            setupComplete = profiles.isNotEmpty()
-
-
-            if (newActiveProfile != null) {
-                applyProfileConfigUiState(
-                    ProfileConfigUiMapper.fromProfile(newActiveProfile)
-                )
-            } else {
-                applyProfileConfigUiState(
-                    ProfileConfigUiMapper.emptyState()
-                )
-                visiblePlugins = emptyList()
-            }
-        }
-
-        appendLog("Deleted profile settings only: ${profileToDelete.profileName}")
-        updateLastOperationStatus("Deleted profile: ${profileToDelete.profileName}")
-
-        runOnUiThreadBlocking {
-            profileOptions = profiles
-            activeProfileId = newActiveProfile?.profileId
-            activeProfileName = newActiveProfile?.profileName ?: "No profile"
-            setupComplete = profiles.isNotEmpty()
-
-            if (newActiveProfile != null) {
-                applyProfileConfigUiState(
-                    ProfileConfigUiMapper.fromProfile(newActiveProfile)
-                )
-            } else {
-                applyProfileConfigUiState(
-                    ProfileConfigUiMapper.emptyState()
-                )
-                showProfileDialog = false
-            }
-
-            visibleMods = emptyList()
-            visiblePlugins = emptyList()
-            visibleModContentIndexes = emptyMap()
-        }
-    }
-
 
     private fun showToast(message: String) {
         runOnUiThread {
