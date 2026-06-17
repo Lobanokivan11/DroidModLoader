@@ -1927,9 +1927,6 @@ class ModEngine(
     fun getDownloadedArchiveById(archiveId: String?): DownloadedArchiveRecord? {
         return downloadedArchiveRepository.findById(archiveId)
     }
-    fun resolveDownloadedArchiveFile(record: DownloadedArchiveRecord): File {
-        return downloadedArchiveRepository.resolveArchiveFile(record)
-    }
     fun markDownloadedArchiveInstalled(
         archiveId: String?,
         installedModId: String

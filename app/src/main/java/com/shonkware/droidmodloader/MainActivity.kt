@@ -59,9 +59,11 @@ import com.shonkware.droidmodloader.ui.workflow.ModManagementEngineAdapter
 import com.shonkware.droidmodloader.ui.workflow.ModManagementWorkflow
 import com.shonkware.droidmodloader.ui.workflow.ArchiveImportWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.ArchiveImportExecutionWorkflow
-import com.shonkware.droidmodloader.ui.workflow.ArchiveLibraryEngineAdapter
-import com.shonkware.droidmodloader.ui.workflow.ArchiveLibraryWorkflow
-import com.shonkware.droidmodloader.ui.archive.ArchiveLibraryUiItem
+import com.shonkware.droidmodloader.engine.download.ArchiveFolderPreferences
+import com.shonkware.droidmodloader.engine.download.ArchiveFolderScanner
+import com.shonkware.droidmodloader.ui.workflow.ArchiveBrowserHistory
+import com.shonkware.droidmodloader.ui.workflow.ArchiveBrowserWorkflow
+import com.shonkware.droidmodloader.ui.archive.ArchiveBrowserUiState
 import com.shonkware.droidmodloader.ui.workflow.FolderPickMode
 import com.shonkware.droidmodloader.ui.workflow.FolderPickerWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.DeploymentActionWorkflowController
@@ -122,9 +124,9 @@ class MainActivity : ComponentActivity() {
     private var showModFilePreviewDialog by mutableStateOf(false)
     private var modFilePreviewFullscreen by mutableStateOf(false)
     private var fullscreenPanel by mutableStateOf(FullscreenPanel.NONE)
-    private var showArchiveInstallSourceDialog by mutableStateOf(false)
-    private var archiveLibraryItems by mutableStateOf<List<ArchiveLibraryUiItem>>(emptyList())
-    private var archiveLibraryMessage by mutableStateOf("")
+    private var showArchiveFolderSetupDialog by mutableStateOf(false)
+    private var archiveBrowserState by mutableStateOf(ArchiveBrowserUiState())
+    private var archiveFolderPickerActive = false
     private var overwriteEntries by mutableStateOf<List<OverwriteEntry>>(emptyList())
     private var showOverwriteDialog by mutableStateOf(false)
     private var overwriteBaselineExists by mutableStateOf(false)
@@ -154,6 +156,27 @@ class MainActivity : ComponentActivity() {
             appendError("Failed to persist folder permission: ${e.message}", e)
         }
     }
+    private val pickArchiveFolderLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        archiveFolderPickerActive = false
+        if (uri == null) {
+            appendLog("No archive folder selected.")
+            archiveBrowserWorkflow.refreshIfOpen()
+            return@registerForActivityResult
+        }
+
+        try {
+            contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+            archiveBrowserWorkflow.selectFolder(uri.toString())
+        } catch (e: Exception) {
+            appendError("Failed to remember archive folder access: ${e.message}", e)
+        }
+    }
+
     private val operationStatusController = OperationStatusController()
     private val pluginSyncWorkflowController = PluginSyncWorkflowController(
         createEngine = { createModEngineForWorkflows() },
@@ -240,7 +263,10 @@ class MainActivity : ComponentActivity() {
                     installerDialogFullscreen = false
                 }
             },
-            refreshDashboard = { refreshDashboard() }
+            refreshDashboard = {
+                refreshDashboard()
+                archiveBrowserWorkflow.refreshIfOpen()
+            }
         )
     }
     private val installerWorkflowController by lazy {
@@ -432,12 +458,7 @@ class MainActivity : ComponentActivity() {
             onApplyModOrder = { orderedModIds -> modManagementWorkflow.applyModOrder(orderedModIds) }
         )
     }
-    private val importZipLauncher = registerForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        archiveImportWorkflowController.handleArchivePickerResult(uri)
-    }
-    private val archiveImportWorkflowController by lazy {
+    private val archiveImportWorkflowController: ArchiveImportWorkflowController by lazy {
         ArchiveImportWorkflowController(
             appendLog = { message -> appendLog(message) },
             runInBackground = { task -> runInBackground(task) },
@@ -598,7 +619,7 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    private val archiveImportExecutionWorkflow by lazy {
+    private val archiveImportExecutionWorkflow: ArchiveImportExecutionWorkflow by lazy {
         ArchiveImportExecutionWorkflow(
             operationInProgressProvider = { operationInProgress },
             beginOperation = { message -> beginOperation(message) },
@@ -621,50 +642,66 @@ class MainActivity : ComponentActivity() {
             appendInstalledModRoutingSummary = { engine, mod ->
                 appendInstalledModRoutingSummary(engine, mod)
             },
-            refreshDashboard = { refreshDashboard() }
+            refreshDashboard = {
+                refreshDashboard()
+                archiveBrowserWorkflow.refreshIfOpen()
+            }
         )
     }
 
-    private val archiveLibraryWorkflow by lazy {
-        ArchiveLibraryWorkflow(
+    private val archiveFolderPreferences by lazy {
+        ArchiveFolderPreferences(
+            getSharedPreferences(
+                ArchiveFolderPreferences.PREFERENCES_NAME,
+                MODE_PRIVATE
+            )
+        )
+    }
+
+    private val archiveFolderScanner by lazy {
+        ArchiveFolderScanner(this)
+    }
+
+    private val archiveBrowserWorkflow: ArchiveBrowserWorkflow by lazy {
+        ArchiveBrowserWorkflow(
+            preferences = archiveFolderPreferences,
+            runInBackground = { task -> runInBackground(task) },
             isOperationInProgress = { operationInProgress },
-            createEngine = {
-                createModEngineForWorkflows()?.let { engine ->
-                    ArchiveLibraryEngineAdapter(
-                        engine = engine,
-                        syncPluginsAction = { syncPluginsFromCurrentState(engine) },
-                        appendRoutingSummary = { mod ->
-                            appendInstalledModRoutingSummary(engine, mod)
-                        }
-                    )
+            isBrowserOpen = { fullscreenPanel == FullscreenPanel.ARCHIVES },
+            scanFolder = { treeUri -> archiveFolderScanner.scan(treeUri) },
+            loadHistory = {
+                val engine = createModEngineForWorkflows()
+                    ?: throw IllegalStateException("Archive browser is unavailable.")
+                ArchiveBrowserHistory(
+                    records = engine.getDownloadedArchives(),
+                    currentMods = engine.getCurrentMods()
+                )
+            },
+            canonicalIdentityForSourceUri = { sourceUri ->
+                archiveFolderScanner.canonicalIdentityForUri(sourceUri)
+            },
+            showFolderSetup = {
+                runOnUiThread {
+                    showArchiveFolderSetupDialog = true
                 }
             },
-            showLibrary = { items, message ->
+            showBrowser = {
                 runOnUiThread {
-                    archiveLibraryItems = items
-                    archiveLibraryMessage = message
+                    showArchiveFolderSetupDialog = false
                     fullscreenPanel = FullscreenPanel.ARCHIVES
                 }
             },
-            closeLibrary = {
+            updateState = { state ->
                 runOnUiThread {
-                    fullscreenPanel = FullscreenPanel.NONE
+                    archiveBrowserState = state
                 }
             },
-            showInstallerChoices = { prepared, archiveRecordId ->
-                runOnUiThread {
-                    pendingArchiveInstall = prepared
-                    pendingInstallerArchiveRecordId = archiveRecordId
-                    pendingInstallerSelectedOptionIds = prepared.plan.defaultSelectedOptionIds
-                    showInstallerDialog = true
-                    installerDialogFullscreen = false
-                }
+            installArchiveUri = { documentUri ->
+                archiveImportWorkflowController.handleArchivePickerResult(
+                    Uri.parse(documentUri)
+                )
             },
-            beginOperation = { message -> beginOperation(message) },
-            finishOperation = { message -> finishOperation(message) },
-            failOperation = { message, throwable -> failOperation(message, throwable) },
-            appendLog = { message -> appendLog(message) },
-            refreshDashboard = { refreshDashboard() }
+            appendLog = { message -> appendLog(message) }
         )
     }
 
@@ -708,6 +745,10 @@ class MainActivity : ComponentActivity() {
         if (secondScreenEnabled) {
             secondScreenController?.start()
             updateSecondScreen()
+        }
+
+        if (!archiveFolderPickerActive) {
+            archiveBrowserWorkflow.refreshIfOpen()
         }
     }
 
@@ -774,9 +815,8 @@ class MainActivity : ComponentActivity() {
             showDeployRecoveryDialog = showDeployRecoveryDialog,
 
             showForceFullRedeployConfirmDialog = showForceFullRedeployConfirmDialog,
-            showArchiveInstallSourceDialog = showArchiveInstallSourceDialog,
-            archiveLibraryItems = archiveLibraryItems,
-            archiveLibraryMessage = archiveLibraryMessage
+            showArchiveFolderSetupDialog = showArchiveFolderSetupDialog,
+            archiveBrowserState = archiveBrowserState
         )
     }
 
@@ -789,27 +829,26 @@ class MainActivity : ComponentActivity() {
                     appendLog("Developer tools unlocked.")
                 }
             },
-            onOpenInstallSource = {
-                showArchiveInstallSourceDialog = true
+            onInstallMod = {
+                archiveBrowserWorkflow.openBrowser()
             },
-            onChooseArchiveFromDevice = {
-                showArchiveInstallSourceDialog = false
-                appendLog("Opening document picker...")
-                importZipLauncher.launch(arrayOf("*/*"))
+            onChooseArchiveFolder = {
+                showArchiveFolderSetupDialog = false
+                archiveFolderPickerActive = true
+                pickArchiveFolderLauncher.launch(null)
             },
-            onOpenArchiveLibrary = {
-                showArchiveInstallSourceDialog = false
-                runInBackground {
-                    archiveLibraryWorkflow.openLibrary()
-                }
+            onDismissArchiveFolderSetup = {
+                showArchiveFolderSetupDialog = false
             },
-            onDismissArchiveInstallSource = {
-                showArchiveInstallSourceDialog = false
+            onRefreshArchiveFolder = {
+                archiveBrowserWorkflow.refresh()
             },
-            onInstallArchiveFromLibrary = { archiveId ->
-                runInBackground {
-                    archiveLibraryWorkflow.installArchive(archiveId)
-                }
+            onChangeArchiveFolder = {
+                archiveFolderPickerActive = true
+                pickArchiveFolderLauncher.launch(null)
+            },
+            onInstallArchiveFromFolder = { stableId ->
+                archiveBrowserWorkflow.installArchive(stableId)
             },
             onDeployMods = {
                 deploymentActionWorkflowController.deploy()
