@@ -72,6 +72,10 @@ class DownloadedArchiveRepository(
         return load().firstOrNull { it.archiveId == archiveId }
     }
 
+    fun resolveArchiveFile(record: DownloadedArchiveRecord): File {
+        return File(archiveLibraryDir, record.relativePath)
+    }
+
     fun markInstalled(
         archiveId: String?,
         installedModId: String

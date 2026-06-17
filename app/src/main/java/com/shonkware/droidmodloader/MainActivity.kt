@@ -59,6 +59,9 @@ import com.shonkware.droidmodloader.ui.workflow.ModManagementEngineAdapter
 import com.shonkware.droidmodloader.ui.workflow.ModManagementWorkflow
 import com.shonkware.droidmodloader.ui.workflow.ArchiveImportWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.ArchiveImportExecutionWorkflow
+import com.shonkware.droidmodloader.ui.workflow.ArchiveLibraryEngineAdapter
+import com.shonkware.droidmodloader.ui.workflow.ArchiveLibraryWorkflow
+import com.shonkware.droidmodloader.ui.archive.ArchiveLibraryUiItem
 import com.shonkware.droidmodloader.ui.workflow.FolderPickMode
 import com.shonkware.droidmodloader.ui.workflow.FolderPickerWorkflowController
 import com.shonkware.droidmodloader.ui.workflow.DeploymentActionWorkflowController
@@ -119,6 +122,9 @@ class MainActivity : ComponentActivity() {
     private var showModFilePreviewDialog by mutableStateOf(false)
     private var modFilePreviewFullscreen by mutableStateOf(false)
     private var fullscreenPanel by mutableStateOf(FullscreenPanel.NONE)
+    private var showArchiveInstallSourceDialog by mutableStateOf(false)
+    private var archiveLibraryItems by mutableStateOf<List<ArchiveLibraryUiItem>>(emptyList())
+    private var archiveLibraryMessage by mutableStateOf("")
     private var overwriteEntries by mutableStateOf<List<OverwriteEntry>>(emptyList())
     private var showOverwriteDialog by mutableStateOf(false)
     private var overwriteBaselineExists by mutableStateOf(false)
@@ -619,6 +625,49 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    private val archiveLibraryWorkflow by lazy {
+        ArchiveLibraryWorkflow(
+            isOperationInProgress = { operationInProgress },
+            createEngine = {
+                createModEngineForWorkflows()?.let { engine ->
+                    ArchiveLibraryEngineAdapter(
+                        engine = engine,
+                        syncPluginsAction = { syncPluginsFromCurrentState(engine) },
+                        appendRoutingSummary = { mod ->
+                            appendInstalledModRoutingSummary(engine, mod)
+                        }
+                    )
+                }
+            },
+            showLibrary = { items, message ->
+                runOnUiThread {
+                    archiveLibraryItems = items
+                    archiveLibraryMessage = message
+                    fullscreenPanel = FullscreenPanel.ARCHIVES
+                }
+            },
+            closeLibrary = {
+                runOnUiThread {
+                    fullscreenPanel = FullscreenPanel.NONE
+                }
+            },
+            showInstallerChoices = { prepared, archiveRecordId ->
+                runOnUiThread {
+                    pendingArchiveInstall = prepared
+                    pendingInstallerArchiveRecordId = archiveRecordId
+                    pendingInstallerSelectedOptionIds = prepared.plan.defaultSelectedOptionIds
+                    showInstallerDialog = true
+                    installerDialogFullscreen = false
+                }
+            },
+            beginOperation = { message -> beginOperation(message) },
+            finishOperation = { message -> finishOperation(message) },
+            failOperation = { message, throwable -> failOperation(message, throwable) },
+            appendLog = { message -> appendLog(message) },
+            refreshDashboard = { refreshDashboard() }
+        )
+    }
+
     private val previewDialogActionWorkflowController by lazy {
         PreviewDialogActionWorkflowController(
             toggleInstallerFullscreen = {
@@ -725,8 +774,10 @@ class MainActivity : ComponentActivity() {
             showDeployRecoveryDialog = showDeployRecoveryDialog,
 
             showForceFullRedeployConfirmDialog = showForceFullRedeployConfirmDialog,
-
-            )
+            showArchiveInstallSourceDialog = showArchiveInstallSourceDialog,
+            archiveLibraryItems = archiveLibraryItems,
+            archiveLibraryMessage = archiveLibraryMessage
+        )
     }
 
     private fun buildUiActions(): DashboardActions {
@@ -738,9 +789,27 @@ class MainActivity : ComponentActivity() {
                     appendLog("Developer tools unlocked.")
                 }
             },
-            onImportArchive = {
+            onOpenInstallSource = {
+                showArchiveInstallSourceDialog = true
+            },
+            onChooseArchiveFromDevice = {
+                showArchiveInstallSourceDialog = false
                 appendLog("Opening document picker...")
                 importZipLauncher.launch(arrayOf("*/*"))
+            },
+            onOpenArchiveLibrary = {
+                showArchiveInstallSourceDialog = false
+                runInBackground {
+                    archiveLibraryWorkflow.openLibrary()
+                }
+            },
+            onDismissArchiveInstallSource = {
+                showArchiveInstallSourceDialog = false
+            },
+            onInstallArchiveFromLibrary = { archiveId ->
+                runInBackground {
+                    archiveLibraryWorkflow.installArchive(archiveId)
+                }
             },
             onDeployMods = {
                 deploymentActionWorkflowController.deploy()

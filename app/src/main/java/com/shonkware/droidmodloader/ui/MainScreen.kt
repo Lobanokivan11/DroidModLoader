@@ -21,6 +21,7 @@ import com.shonkware.droidmodloader.engine.model.GameProfile
 import com.shonkware.droidmodloader.engine.model.Mod
 import com.shonkware.droidmodloader.engine.model.PluginEntry
 import com.shonkware.droidmodloader.engine.overwrite.OverwriteEntry
+import com.shonkware.droidmodloader.ui.archive.ArchiveLibraryUiItem
 import com.shonkware.droidmodloader.ui.theme.DmlMatteBackground
 
 data class DashboardUiState(
@@ -68,12 +69,19 @@ data class DashboardUiState(
     val overwriteMessage: String,
     val deployRecoveryWarningText: String = "",
     val showDeployRecoveryDialog: Boolean = false,
-    val showForceFullRedeployConfirmDialog: Boolean = false
+    val showForceFullRedeployConfirmDialog: Boolean = false,
+    val showArchiveInstallSourceDialog: Boolean = false,
+    val archiveLibraryItems: List<ArchiveLibraryUiItem> = emptyList(),
+    val archiveLibraryMessage: String = ""
 )
 
 data class DashboardActions(
     val onVersionTap: () -> Unit,
-    val onImportArchive: () -> Unit,
+    val onOpenInstallSource: () -> Unit,
+    val onChooseArchiveFromDevice: () -> Unit,
+    val onOpenArchiveLibrary: () -> Unit,
+    val onDismissArchiveInstallSource: () -> Unit,
+    val onInstallArchiveFromLibrary: (String) -> Unit,
     val onDeployMods: () -> Unit,
     val onWriteLoadOrderFiles: () -> Unit,
     val onToggleMod: (String) -> Unit,
@@ -190,7 +198,7 @@ private fun MainDashboardScreen(
 
                 MainActionsCard(
                     operationInProgress = state.operationInProgress,
-                    onImportArchive = actions.onImportArchive,
+                    onInstallMod = actions.onOpenInstallSource,
                     onDeployMods = actions.onDeployMods,
                     onWriteLoadOrderFiles = actions.onWriteLoadOrderFiles
                 )
@@ -312,12 +320,30 @@ fun DroidModLoaderScreen(
             )
         }
 
+        FullscreenPanel.ARCHIVES -> {
+            ArchiveLibraryPanelDialog(
+                items = state.archiveLibraryItems,
+                message = state.archiveLibraryMessage,
+                operationInProgress = state.operationInProgress,
+                onInstallArchive = actions.onInstallArchiveFromLibrary,
+                onClose = actions.onCloseFullscreenPanel
+            )
+        }
+
         FullscreenPanel.NONE -> {
             MainDashboardScreen(
                 state = state,
                 actions = actions
             )
         }
+    }
+
+    if (state.showArchiveInstallSourceDialog) {
+        ArchiveInstallSourceDialog(
+            onChooseFromDevice = actions.onChooseArchiveFromDevice,
+            onOpenArchiveLibrary = actions.onOpenArchiveLibrary,
+            onDismiss = actions.onDismissArchiveInstallSource
+        )
     }
 
     if (state.showProfileDialog) {
