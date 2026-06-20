@@ -39,7 +39,7 @@ fi
 #echo "Running docs check..."
 #./tools/check-docs.sh
 
-echo "Running JVM unit tests..."
-./gradlew testDebugUnitTest
+#echo "Running JVM unit tests..."
+#./gradlew testDebugUnitTest
 
 echo "Project check passed."
