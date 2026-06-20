@@ -1776,6 +1776,7 @@ class MainActivity : ComponentActivity() {
         return listOf(
             "skyrim_le",
             "oblivion",
+            "farm2"
             "fallout_3",
             "fallout_nv"
         )
