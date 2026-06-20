@@ -36,3 +36,12 @@ jobs:
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
+
+      - name: NIGHTLY BUILDS
+        uses: softprops/action-gh-release@v1
+        with:
+          body: NIGHTLY BUILDS OF DML
+          tag_name: github_run
+          name: NIGHTLY BUILDS
+          files: |
+             app/build/outputs/apk/debug/*.apk
