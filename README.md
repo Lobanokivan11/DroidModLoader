@@ -1,6 +1,6 @@
 # Droid Mod Loader
 
-## This is Fork of (repo)[https://github.com/CyberShonk/DroidModLoader]
+## This is Fork of [repo](https://github.com/CyberShonk/DroidModLoader)
 
 Droid Mod Loader is an Android app for managing Bethesda game mods.
 
