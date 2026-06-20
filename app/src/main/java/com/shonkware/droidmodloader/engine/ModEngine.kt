@@ -1441,6 +1441,11 @@ class ModEngine(
                 "caravanpack.esm"
             )
 
+            "farm2" -> lower in setOf(
+                "farm2.exe",
+                "Data/sys/strings.xml"
+            )
+
             "oblivion" -> lower in setOf(
                 "oblivion.esm"
             )

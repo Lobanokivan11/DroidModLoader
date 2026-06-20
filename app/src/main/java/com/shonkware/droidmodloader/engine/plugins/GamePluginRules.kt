@@ -21,6 +21,7 @@ class GamePluginRules {
         return when (gameId) {
             "skyrim_le" -> skyrimLeRules()
             "oblivion" -> oblivionRules()
+            "farm2" -> Farm2Rules()
             "fallout_3" -> fallout3Rules()
             "fallout_nv" -> falloutNvRules()
             "fallout_4" -> fallout4Rules()
@@ -40,6 +41,13 @@ class GamePluginRules {
             OfficialPluginRule("HighResTexturePack01.esp", "official_dlc", 6, locked = false, defaultEnabled = true),
             OfficialPluginRule("HighResTexturePack02.esp", "official_dlc", 7, locked = false, defaultEnabled = true),
             OfficialPluginRule("HighResTexturePack03.esp", "official_dlc", 8, locked = false, defaultEnabled = true)
+        )
+    }
+
+    private fun Farm2Rules(): List<OfficialPluginRule> {
+        return listOf(
+            OfficialPluginRule("farm2.exe", "base_game", 1, locked = true, defaultEnabled = true),
+            OfficialPluginRule("Squall.dll", "base_game", 2, locked = true, defaultEnabled = true),
         )
     }
 

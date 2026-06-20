@@ -1611,6 +1611,7 @@ class MainActivity : ComponentActivity() {
         return when (gameId) {
             "skyrim_le" -> "Skyrim Legendary Edition"
             "oblivion" -> "Oblivion"
+            "farm2" -> "Farm Frenzy 2"
             "fallout_3" -> "Fallout 3"
             "fallout_nv" -> "Fallout New Vegas"
             "fallout_4" -> "Fallout 4"
